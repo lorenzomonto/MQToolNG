@@ -1,0 +1,132 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package UI.Misc;
+
+import UI.Helpers.IconManager;
+import UI.Models.TreeNodeObject;
+import UI.Models.TreeNodeObject.TreeNodeObjectType;
+import java.awt.Color;
+import java.awt.Component;
+import javax.swing.UIManager;
+import javax.swing.Icon;
+import javax.swing.JTree;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
+
+/**
+ *
+ * @author jzhou
+ */
+public class CustomTreeRender extends DefaultTreeCellRenderer {
+    IconManager iconManager = new IconManager();
+    
+    @Override
+    public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded, boolean leaf, int row,boolean hasFocus) {
+        super.getTreeCellRendererComponent(tree, value, sel,expanded, leaf, row,hasFocus);
+        if(isRoot(value)){
+            setIcon(iconManager.Root());
+        }
+        else if(isQueueManagerFolderNode(value)){
+            setIcon(iconManager.DeviceManager());
+        }
+        else if(isQueueManagerNodeAndConnected(value)){
+            setIcon(iconManager.QueueMgrConnectedIcon()); 
+            setQueueManagerText(value, sel);
+        }
+        else if(isQueueManagerNodeNotConnected(value)){
+            setIcon(iconManager.QueueMgrDisconnectedIcon());
+            setQueueManagerText(value, sel);
+        }
+        else if(isQueueFolder(value)){
+            setIcon(iconManager.Queue());
+        }        
+        else if(isChannelFolder(value)){
+            setIcon(iconManager.Channel());
+        }
+        else if(isChannelAuthFolder(value)){
+            setIcon(iconManager.AuthIcon());
+        }
+        else if(isPubFolder(value)){
+            setIcon(iconManager.PubIcon());
+        }
+        else if(isSubFolder(value)){
+            setIcon(iconManager.SubIcon());
+        }
+        if(sel){
+            // Colored icons would disappear on the selection background: use the selection text color
+            setIcon(IconManager.InColor(getIcon(), getForeground()));
+        }
+        return this;
+    }
+    
+    // Queue manager name, followed by host:port in a secondary color
+    private void setQueueManagerText(Object value, boolean selected){
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        if(nodeInfo.ConnectionDetail == null){
+            return;
+        }
+        Color muted = selected ? getForeground() : UIManager.getColor("Label.disabledForeground");
+        String hex = String.format("#%06x", muted.getRGB() & 0xFFFFFF);
+        setText("<html>" + escape(nodeInfo.Name) + "&nbsp;&nbsp;<font color='" + hex + "'>"
+                + escape(nodeInfo.ConnectionDetail.Host + ":" + nodeInfo.ConnectionDetail.Port) + "</font></html>");
+    }
+
+    private static String escape(String text){
+        return String.valueOf(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private boolean isRoot(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.Root;
+    }  
+  
+    private boolean isQueueFolder(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.Queues;
+    }    
+
+    private boolean isChannelFolder(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.Channel;
+    }  
+    
+    private boolean isChannelAuthFolder(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.ChannelAuth;
+    }  
+    
+    private boolean isPubFolder(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.Pub;
+    }  
+    
+    private boolean isSubFolder(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.Sub;
+    }  
+    
+    private boolean isQueueManagerNodeAndConnected(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.QueueManager && nodeInfo.IsConnected();
+    }
+    
+    private boolean isQueueManagerNodeNotConnected(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);;
+        return nodeInfo.Type == TreeNodeObjectType.QueueManager && !nodeInfo.IsConnected();
+    }
+    
+    private boolean isQueueManagerFolderNode(Object value) {
+        TreeNodeObject nodeInfo = getTreeNodeObject(value);
+        return nodeInfo.Type == TreeNodeObjectType.QueueManagerFolder;
+    }
+    
+    private TreeNodeObject getTreeNodeObject(Object value){
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode)value;
+        TreeNodeObject nodeInfo = (TreeNodeObject)(node.getUserObject());   
+        return nodeInfo;
+    }
+
+}

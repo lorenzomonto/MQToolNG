@@ -1,0 +1,5 @@
+/Logs/
+/target/
+/nbproject/private/
+
+.DS_Store
