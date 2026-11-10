@@ -2140,6 +2140,11 @@ public class MainWindow extends javax.swing.JFrame {
         settingsModel.SkinName = name;
         XMLHelper.WriteSettingModelToXml(settingsModel);
         FlatLaf.updateUI();
+        // The list and the overview page take turns in the same scroll pane: the one not shown is
+        // outside the window and would keep the previous theme
+        SwingUtilities.updateComponentTreeUI(ContentTable);
+        SwingUtilities.updateComponentTreeUI(ContentTable.getTableHeader());
+        SwingUtilities.updateComponentTreeUI(overviewPanel);
     }
      
     private void addQueueManageMenuItemActionPerformed(java.awt.event.ActionEvent evt){

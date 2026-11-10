@@ -19,6 +19,8 @@ public class TableListObject {
     public TableContentType TableType;
     public Object Type;
     public MQMessageIdModel MessageIdInfo;
+    /** The row's data model (queue or channel details), used to draw its type and status. */
+    public Object Detail;
     
     @Override
     public String toString() {

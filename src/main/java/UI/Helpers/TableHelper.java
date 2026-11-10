@@ -143,6 +143,7 @@ public class TableHelper {
                                 obj.MessageIdInfo.position = Integer.parseInt(String.valueOf(message.Position));
                             }
                             setType(obj, data);
+                            obj.Detail = data;
                             tablleDataObjects[i][j] = obj;
                         }
                         else{
@@ -165,6 +166,8 @@ public class TableHelper {
                 ToggleContentTable(contentTable, false);
             }
             alignHeadersLeading(contentTable);
+            // Object names with an icon for their type (and status for channels)
+            contentTable.setDefaultRenderer(TableListObject.class, new UI.Misc.ObjectNameRender());
             if(headerNames.contains("Queue depth status")){
                 contentTable.getColumn("Queue depth status").setCellRenderer(new DepthCellRender());
             }

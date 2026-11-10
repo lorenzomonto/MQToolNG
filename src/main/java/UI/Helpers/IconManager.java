@@ -195,6 +195,15 @@ public class IconManager {
         return icon("pencil", FOREGROUND);
     }
 
+    /** A Lucide icon of Resources/Icons drawn in the given color (16 px). */
+    public static Icon Named(String name, Color color){
+        return selectedCache.computeIfAbsent(name + "@" + Integer.toHexString(color.getRGB()), k -> {
+            FlatSVGIcon icon = new FlatSVGIcon(ICON_PATH + name + ".svg", SIZE, SIZE);
+            icon.setColorFilter(new FlatSVGIcon.ColorFilter(c -> color));
+            return icon;
+        });
+    }
+
     /** Same icon drawn in a single color, e.g. the selection foreground of a selected tree row. */
     public static Icon InColor(Icon icon, Color color){
         if(!(icon instanceof FlatSVGIcon) || color == null){
