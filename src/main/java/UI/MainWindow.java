@@ -1880,6 +1880,23 @@ public class MainWindow extends javax.swing.JFrame {
         if(nodeObject.IsConnected()){
             return;
         }
+        // Key store passwords that are not available here (not saved on this system, or saved for another
+        // Windows user or computer): asked now, kept in memory for this session
+        ConnectionDetailModel tlsDetail = nodeObject.ConnectionDetail;
+        if(TlsSettings.TrustStoreNeedsPassword(tlsDetail)){
+            String secret = PasswordPrompt.AskSecret("Trust store", "Password of the trust store file " + new java.io.File(tlsDetail.TrustStore).getName());
+            if(secret == null){
+                return;
+            }
+            tlsDetail.TrustStorePassword = secret;
+        }
+        if(TlsSettings.KeyStoreNeedsPassword(tlsDetail)){
+            String secret = PasswordPrompt.AskSecret("Client certificate", "Password of the key store file " + new java.io.File(tlsDetail.KeyStore).getName());
+            if(secret == null){
+                return;
+            }
+            tlsDetail.KeyStorePassword = secret;
+        }
         // No saved password: ask for it at every connection, it is kept in memory only while connected
         if(SessionPasswords.NeedsPassword(nodeObject.ConnectionDetail)){
             SessionPasswords.Forget(nodeObject.ConnectionDetail);
@@ -1974,6 +1991,9 @@ public class MainWindow extends javax.swing.JFrame {
     }//GEN-LAST:event_CancelBittonActionPerformed
 
     private void AddtButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_AddtButtonActionPerformed
+        if(!isConnectionDetailValid()){
+            return;
+        }
         if(!queueManagerEditPanelEditMode){
             ConnectionDetailModel connectionDetail = GetConnectionDetailModel();
             TreeHelper.AddQueueManagerNodeToTreeView(TreeView, connectionDetail);
@@ -2127,11 +2147,73 @@ public class MainWindow extends javax.swing.JFrame {
         showConnectionDetailDialog("Add queue manager");
     }
 
+    // Host and queue manager are required, the port must be a TCP port number
+    private boolean isConnectionDetailValid(){
+        String problem = null;
+        javax.swing.JComponent field = null;
+        if(HostTextBox.getText().trim().isEmpty()){
+            problem = "Enter the host of the queue manager.";
+            field = HostTextBox;
+        }
+        else if(QueueManagerTextBox.getText().trim().isEmpty()){
+            problem = "Enter the name of the queue manager.";
+            field = QueueManagerTextBox;
+        }
+        else{
+            try{
+                int port = Integer.parseInt(PortTextBox.getText().trim());
+                if(port < 1 || port > 65535){
+                    throw new NumberFormatException();
+                }
+            }
+            catch(NumberFormatException ex){
+                problem = "The port must be a number between 1 and 65535.";
+                field = PortTextBox;
+            }
+        }
+        if(problem == null){
+            return true;
+        }
+        field.putClientProperty(FlatClientProperties.OUTLINE, FlatClientProperties.OUTLINE_ERROR);
+        final javax.swing.JComponent invalid = field;
+        field.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                invalid.putClientProperty(FlatClientProperties.OUTLINE, null);
+                invalid.removeFocusListener(this);
+            }
+        });
+        JOptionPane.showMessageDialog(ConnectionDetailDialog, problem, "Queue manager", JOptionPane.WARNING_MESSAGE);
+        field.requestFocusInWindow();
+        return false;
+    }
+
     private void setupConnectionDetailDialog(){
-        // The generated form keeps the fields; the TLS section and the buttons go below it
-        java.awt.Container fields = ConnectionDetailDialog.getContentPane();
-        AddtButton.setVisible(false);
-        CancelBitton.setVisible(false);
+        // Connection fields and TLS section in the same two columns (labels, fields), buttons below
+        javax.swing.JLabel[] labels = {jLabel1, jLabel2, jLabel3, jLabel4, jLabel6, jLabel7};
+        javax.swing.JComponent[] inputs = {HostTextBox, QueueManagerTextBox, ChannelTextBox, PortTextBox, UserTextBox, PasswordTextBox};
+        int labelWidth = tlsSettingsPanel.LabelWidth();
+        for(javax.swing.JLabel label : labels){
+            label.setPreferredSize(null);
+            labelWidth = Math.max(labelWidth, label.getPreferredSize().width);
+        }
+        tlsSettingsPanel.SetLabelWidth(labelWidth);
+        javax.swing.JPanel fields = new javax.swing.JPanel(new java.awt.GridBagLayout());
+        for(int i = 0; i < labels.length; i++){
+            java.awt.GridBagConstraints c = new java.awt.GridBagConstraints();
+            c.gridy = i;
+            c.anchor = java.awt.GridBagConstraints.WEST;
+            c.insets = new java.awt.Insets(3, 0, 3, 12);
+            labels[i].setPreferredSize(new Dimension(labelWidth, labels[i].getPreferredSize().height));
+            fields.add(labels[i], c);
+            c.gridx = 1;
+            c.weightx = 1;
+            c.fill = java.awt.GridBagConstraints.HORIZONTAL;
+            c.insets = new java.awt.Insets(3, 0, 3, 0);
+            inputs[i].setPreferredSize(null);
+            inputs[i].setPreferredSize(new Dimension(360, inputs[i].getPreferredSize().height));
+            fields.add(inputs[i], c);
+        }
         JButton ok = new JButton("OK");
         ok.addActionListener(e -> AddtButtonActionPerformed(e));
         JButton cancel = new JButton("Cancel");
@@ -2146,6 +2228,9 @@ public class MainWindow extends javax.swing.JFrame {
         root.add(buttons, java.awt.BorderLayout.SOUTH);
         ConnectionDetailDialog.setContentPane(root);
         ConnectionDetailDialog.getRootPane().setDefaultButton(ok);
+        // Esc cancels, like the Cancel button
+        ConnectionDetailDialog.getRootPane().registerKeyboardAction(e -> CancelBittonActionPerformed(e),
+                javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
     }
 
     private void showConnectionDetailDialog(String title){

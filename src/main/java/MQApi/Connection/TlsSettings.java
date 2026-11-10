@@ -38,7 +38,12 @@ public class TlsSettings {
     public static void Apply(ConnectionDetailModel connection, Map<Object, Object> properties) throws MQException {
         try {
             TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            trust.init(trustStore(connection));
+            KeyStore trusted = trustStore(connection);
+            if (trusted != null && isSet(connection.TrustStore) && !hasCertificates(trusted)) {
+                throw new MQException(MQConstants.MQCC_FAILED, MQConstants.MQRC_SSL_INITIALIZATION_ERROR,
+                        "The trust store file contains no certificate that can be read: check the file and its password.");
+            }
+            trust.init(trusted);
             KeyManager[] keys = null;
             if (isSet(connection.KeyStore)) {
                 char[] password = chars(connection.KeyStorePassword);
@@ -80,6 +85,36 @@ public class TlsSettings {
             default:
                 return null;
         }
+    }
+
+    /**
+     * True when the trust store file needs a password that is not available (not saved, or saved
+     * encrypted for another Windows user or computer): without it its certificates cannot be read.
+     */
+    public static boolean TrustStoreNeedsPassword(ConnectionDetailModel connection) {
+        if (!connection.IsTlsEnabled() || !isSet(connection.TrustStore) || isSet(connection.TrustStorePassword)) {
+            return false;
+        }
+        try {
+            return !hasCertificates(KeyStore.getInstance(new File(connection.TrustStore.trim()), (char[]) null));
+        } catch (GeneralSecurityException | IOException | IllegalArgumentException ex) {
+            return true;
+        }
+    }
+
+    /** True when a client certificate is set and its key store password is not available. */
+    public static boolean KeyStoreNeedsPassword(ConnectionDetailModel connection) {
+        return connection.IsTlsEnabled() && isSet(connection.KeyStore) && !isSet(connection.KeyStorePassword);
+    }
+
+    private static boolean hasCertificates(KeyStore store) throws GeneralSecurityException {
+        java.util.Enumeration<String> aliases = store.aliases();
+        while (aliases.hasMoreElements()) {
+            if (store.isCertificateEntry(aliases.nextElement())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Null = Java's default trust store (cacerts). */

@@ -5,6 +5,7 @@
  */
 package UI.Dialogs;
 
+import UI.Helpers.SwingThread;
 import MQApi.Enums.LogType;
 import MQApi.Enums.QueueType;
 import MQApi.Logs.LogWriter;
@@ -376,10 +377,13 @@ public class BrowseMessageDialog extends DialogBase {
                 if(result.QuerySuccess){
                     TableHelper.UpdateContentTable(MessageListTable, result.DataModels);                       
                 }
-                else{
-                    JOptionPane.showMessageDialog(ParentJFrame, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                }
-                tableLoadFinish();
+                // Swing components are updated on the event thread
+                SwingThread.RunOnEdt(() -> {
+                    if(!result.QuerySuccess){
+                        JOptionPane.showMessageDialog(ParentJFrame, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                    tableLoadFinish();
+                });
             }
         });
         thread.start();       

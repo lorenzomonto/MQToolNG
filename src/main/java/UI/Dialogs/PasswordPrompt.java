@@ -74,6 +74,34 @@ public class PasswordPrompt {
         return new SessionPasswords.PromptResult(text, saveCheckBox.isSelected());
     }
 
+    /** Asks for a secret (e.g. a key store password); null when cancelled or empty. */
+    public static String AskSecret(String title, String message) {
+        String[] result = new String[1];
+        SwingThread.RunOnEdt(() -> {
+            JPasswordField field = new JPasswordField(24);
+            JPanel panel = new JPanel(new BorderLayout(0, 8));
+            panel.add(new JLabel("<html>" + escape(message) + "</html>"), BorderLayout.NORTH);
+            panel.add(field, BorderLayout.CENTER);
+            JOptionPane pane = new JOptionPane(panel, JOptionPane.PLAIN_MESSAGE, JOptionPane.OK_CANCEL_OPTION) {
+                @Override
+                public void selectInitialValue() {
+                    field.requestFocusInWindow();
+                }
+            };
+            JDialog dialog = pane.createDialog(KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow(), title);
+            field.addActionListener(e -> pane.setValue(JOptionPane.OK_OPTION));
+            dialog.setVisible(true);
+            dialog.dispose();
+            char[] secret = field.getPassword();
+            Object value = pane.getValue();
+            if (value instanceof Integer && (Integer) value == JOptionPane.OK_OPTION && secret.length > 0) {
+                result[0] = new String(secret);
+            }
+            java.util.Arrays.fill(secret, '\0');
+        });
+        return result[0];
+    }
+
     private static String escape(String text) {
         return String.valueOf(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }

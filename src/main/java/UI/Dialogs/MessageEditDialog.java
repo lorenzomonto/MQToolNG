@@ -64,6 +64,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         this.queueName = queueName;
         this.isNew = false;
         initComponents();
+        scrollDeadLetterHeader();
         initCustomProperties();
         showMessageDetail(false);
     }
@@ -74,6 +75,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         this.queueName = queueName;
         this.isNew = true;
         initComponents();
+        scrollDeadLetterHeader();
         initCustomProperties();
         showMessageDetail(false);
     }
@@ -575,7 +577,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
             .addGroup(jPanel1Layout.createSequentialGroup()
                 .addComponent(ContentEditorToolbar, javax.swing.GroupLayout.PREFERRED_SIZE, 25, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(0, 0, 0)
-                .addComponent(ContentEditorScrollPane, javax.swing.GroupLayout.DEFAULT_SIZE, 719, Short.MAX_VALUE))
+                .addComponent(ContentEditorScrollPane, javax.swing.GroupLayout.DEFAULT_SIZE, 360, Short.MAX_VALUE))
         );
 
         MessagePanel.addTab("Data", jPanel1);
@@ -1159,6 +1161,19 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
             showMessageDetail(false);
         }
     }//GEN-LAST:event_DecodeButtonActionPerformed
+
+    // DLH has many fields: it scrolls instead of making the whole dialog taller
+    private void scrollDeadLetterHeader(){
+        int index = MessagePanel.indexOfComponent(jPanel3);
+        if(index < 0){
+            return; // the tab is not there (e.g. a new message)
+        }
+        // Replace the tab first: putting the panel in the scroll pane removes it from the tabs
+        javax.swing.JScrollPane scroll = new javax.swing.JScrollPane();
+        scroll.setBorder(javax.swing.BorderFactory.createEmptyBorder());
+        MessagePanel.setComponentAt(index, scroll);
+        scroll.setViewportView(jPanel3);
+    }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField AccountTokenTextField;

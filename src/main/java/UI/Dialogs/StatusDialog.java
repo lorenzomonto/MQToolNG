@@ -5,6 +5,7 @@
  */
 package UI.Dialogs;
 
+import UI.Helpers.SwingThread;
 import MQApi.Enums.LogType;
 import MQApi.Enums.MQObjectType;
 import MQApi.Enums.QueueType;
@@ -78,9 +79,7 @@ public class StatusDialog<T extends Enum> extends DialogBase {
                         loadTableSuccess();
                     }
                     else{
-                        loadTableFail();
-                        JOptionPane.showMessageDialog(component, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                        Close();
+                        loadTableFail(result.ErrorMessage);
                     }
                 }
                 if(statusType == StatusType.ChannelSavedStatus){
@@ -90,9 +89,7 @@ public class StatusDialog<T extends Enum> extends DialogBase {
                         loadTableSuccess();
                     }
                     else{
-                        loadTableFail();
-                        JOptionPane.showMessageDialog(component, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                        Close();
+                        loadTableFail(result.ErrorMessage);
                     }
                 }
                 else if(statusType == StatusType.QueueHandleStatus){
@@ -102,9 +99,7 @@ public class StatusDialog<T extends Enum> extends DialogBase {
                         loadTableSuccess();
                     }
                     else{
-                        loadTableFail();
-                        JOptionPane.showMessageDialog(component, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                        Close();
+                        loadTableFail(result.ErrorMessage);
                     }
                 }
                 else if(statusType == StatusType.QueueStatus){
@@ -114,9 +109,7 @@ public class StatusDialog<T extends Enum> extends DialogBase {
                         loadTableSuccess();
                     }
                     else{
-                        loadTableFail();
-                        JOptionPane.showMessageDialog(component, result.ErrorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                        Close();
+                        loadTableFail(result.ErrorMessage);
                     }
                 }
             }
@@ -240,14 +233,21 @@ public class StatusDialog<T extends Enum> extends DialogBase {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
+    // Called by the loading thread: Swing components are updated on the event thread
     private void loadTableSuccess(){
-        this.ProgressBar.setIndeterminate(false);
-        this.ProgressBar.setVisible(false);
+        SwingThread.RunOnEdt(() -> {
+            this.ProgressBar.setIndeterminate(false);
+            this.ProgressBar.setVisible(false);
+        });
     }
    
-    private void loadTableFail(){
-        this.ProgressBar.setIndeterminate(false);
-         this.ProgressBar.setVisible(false);
+    private void loadTableFail(String message){
+        SwingThread.RunOnEdt(() -> {
+            this.ProgressBar.setIndeterminate(false);
+            this.ProgressBar.setVisible(false);
+            JOptionPane.showMessageDialog(this, message, "Error", JOptionPane.ERROR_MESSAGE);
+            Close();
+        });
     }
     
     private void CancelButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_CancelButtonActionPerformed

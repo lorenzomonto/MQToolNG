@@ -44,6 +44,10 @@ public class DialogLayoutFixer {
         Dimension oldLayoutSize = window.getPreferredSize();
         boolean setOnPurpose = !window.isPreferredSizeSet() && !window.getSize().equals(oldLayoutSize);
         fixComponents(window);
+        invalidateTree(window);
+        fixScrollPanes(window);
+        // setPreferredSize does not invalidate: the layouts would keep the old sizes in their cache
+        invalidateTree(window);
         if (window instanceof JDialog) {
             JDialog dialog = (JDialog) window;
             dialog.getRootPane().putClientProperty(FIXED, Boolean.TRUE);
@@ -69,6 +73,28 @@ public class DialogLayoutFixer {
         window.setLocationRelativeTo(window.getOwner());
     }
 
+    private static void fixScrollPanes(Container container) {
+        for (Component component : container.getComponents()) {
+            if (component instanceof javax.swing.JScrollPane) {
+                fixScrollPane((javax.swing.JScrollPane) component);
+            }
+            if (component instanceof Container) {
+                fixScrollPanes((Container) component);
+            }
+        }
+    }
+
+    private static void invalidateTree(Container container) {
+        container.invalidate();
+        for (Component component : container.getComponents()) {
+            if (component instanceof Container) {
+                invalidateTree((Container) component);
+            } else {
+                component.invalidate();
+            }
+        }
+    }
+
     private static void fixComponents(Container container) {
         for (Component component : container.getComponents()) {
             if (component instanceof JComponent) {
@@ -80,7 +106,24 @@ public class DialogLayoutFixer {
         }
     }
 
+    // Scrolling areas ask for at most this height: the dialogs are resizable, the content scrolls
+    private static final int MAX_SCROLL_HEIGHT = 400;
+
+    private static void fixScrollPane(javax.swing.JScrollPane scroll) {
+        if (scroll.isPreferredSizeSet()) {
+            return;
+        }
+        Dimension preferred = scroll.getPreferredSize();
+        if (preferred.height > MAX_SCROLL_HEIGHT) {
+            int scrollBar = scroll.getVerticalScrollBar().getPreferredSize().width;
+            scroll.setPreferredSize(new Dimension(preferred.width + scrollBar, MAX_SCROLL_HEIGHT));
+        }
+    }
+
     private static void fix(JComponent component) {
+        if (component instanceof javax.swing.JScrollPane) {
+            return; // handled by fixScrollPanes, once the content has its final size
+        }
         boolean text = component instanceof JLabel || component instanceof AbstractButton;
         boolean field = component instanceof JTextComponent && !(component instanceof javax.swing.JEditorPane) && !(component instanceof javax.swing.JTextArea)
                 || component instanceof JComboBox || component instanceof JSpinner || component instanceof JProgressBar;

@@ -45,6 +45,7 @@ public class TlsSettingsPanel extends JPanel {
     private final JButton keyBrowse = new JButton("Browse…");
     private final JTextField peerName = new JTextField(22);
     private final JComponent[] tlsFields;
+    private final java.util.List<JLabel> labels = new java.util.ArrayList<>();
 
     public TlsSettingsPanel() {
         super(new GridBagLayout());
@@ -68,7 +69,9 @@ public class TlsSettingsPanel extends JPanel {
         add(useTls, constraints(0, row++, 3));
         add(notEncrypted, constraints(0, row++, 3));
         addRow(row++, "Encryption", cipher, null);
-        add(new JLabel("Trusted certificates"), labelConstraints(row));
+        JLabel trustLabel = new JLabel("Trusted certificates");
+        labels.add(trustLabel);
+        add(trustLabel, labelConstraints(row));
         add(systemTrust, constraints(1, row++, 2));
         add(fileTrust, constraints(1, row++, 2));
         addRow(row++, "", withPassword(trustStore, trustBrowse, trustStorePassword), null);
@@ -85,6 +88,18 @@ public class TlsSettingsPanel extends JPanel {
         Load(null);
     }
 
+    /** Width of the widest label of this section. */
+    public int LabelWidth() {
+        return labels.stream().mapToInt(l -> l.getPreferredSize().width).max().orElse(0);
+    }
+
+    /** Gives the label column a fixed width, to line it up with the fields above the section. */
+    public void SetLabelWidth(int width) {
+        for (JLabel label : labels) {
+            label.setPreferredSize(new java.awt.Dimension(width, label.getPreferredSize().height));
+        }
+    }
+
     private static JPanel withPassword(JTextField file, JButton browse, JPasswordField password) {
         JPanel panel = new JPanel(new BorderLayout(6, 0));
         panel.setOpaque(false);
@@ -98,7 +113,9 @@ public class TlsSettingsPanel extends JPanel {
     }
 
     private void addRow(int row, String label, JComponent field, JComponent extra) {
-        add(new JLabel(label), labelConstraints(row));
+        JLabel labelComponent = new JLabel(label);
+        labels.add(labelComponent);
+        add(labelComponent, labelConstraints(row));
         add(field, constraints(1, row, extra == null ? 2 : 1));
         if (extra != null) {
             add(extra, constraints(2, row, 1));
