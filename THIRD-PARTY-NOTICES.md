@@ -8,4 +8,6 @@
 | [Bounce](http://www.edankert.com) 0.19 by Edwin Dankert | BSD | `lib/repo` |
 | [Lucide](https://lucide.dev) icons | ISC | `src/main/resources/Resources/Icons`, see `LICENSE-lucide.txt` |
 | [JUnit](https://junit.org/) (tests only) | EPL-2.0 | Maven test dependency |
-| IBM MQ classes for Java (`com.ibm.mq.allclient`) | IBM license | Maven dependency, not included in this repository |
+| IBM MQ classes for Java (`com.ibm.mq.allclient`) | IBM International Program License Agreement (IBM MQ redistributable component) | Maven dependency, not included in this repository; bundled in `MQToolNG.jar` of the release packages |
+| [Eclipse Temurin](https://adoptium.net) 21 JRE | GPL-2.0 with Classpath Exception | `jre` folder of the Windows release package |
+| [Launch4j](https://launch4j.sourceforge.net) launcher | BSD / MIT (launcher head) | `MQToolNG.exe` of the Windows release package |

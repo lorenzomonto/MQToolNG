@@ -1066,7 +1066,7 @@ public class MainWindow extends javax.swing.JFrame {
         icons.add(iconManager.MainIcon16().getImage());
         icons.add(iconManager.MainIcon32().getImage());
         this.setIconImages(icons); 
-        this.setTitle("MQ Admin Tool");
+        this.setTitle(AppInfo.NAME);
         //this.timer = new Timer();
         this.TreeViewPanel.setMinimumSize(new Dimension(200,400));
         this.SplitPane.setDividerLocation(200);
@@ -1098,10 +1098,8 @@ public class MainWindow extends javax.swing.JFrame {
         this.SplitPane.setDividerLocation(260);
         this.TreeView.setBorder(BorderFactory.createEmptyBorder(6, 0, 6, 0));
         this.TreeViewPanel.putClientProperty(FlatClientProperties.STYLE, "border: 0,0,0,0");
-        // Sidebar look: no border and no focus outline around the tree
+        // Sidebar look: no border around the tree
         jScrollPane1.setBorder(BorderFactory.createEmptyBorder());
-        jScrollPane1.putClientProperty(FlatClientProperties.OUTLINE, null);
-        jScrollPane1.putClientProperty(FlatClientProperties.STYLE, "focusWidth: 0; innerFocusWidth: 0");
 
         // Search: Enter applies the filter, the clear button removes it
         this.SearchButton.setVisible(false);

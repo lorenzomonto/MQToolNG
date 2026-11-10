@@ -4,11 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>mqadmintool</groupId>
-    <artifactId>mqadmintool</artifactId>
-    <version>2.0.0-SNAPSHOT</version>
+    <groupId>io.github.lorenzomonto</groupId>
+    <artifactId>mqtoolng</artifactId>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>MQAdminTool</name>
+    <name>MQToolNG</name>
     <description>A Java GUI application for managing IBM MQ objects and messages</description>
 
     <properties>
@@ -89,7 +89,7 @@
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
-                            <finalName>MQAdminTool</finalName>
+                            <finalName>MQToolNG</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
@@ -109,6 +109,8 @@
                                     <mainClass>${main.class}</mainClass>
                                     <manifestEntries>
                                         <Multi-Release>true</Multi-Release>
+                                        <Implementation-Title>${project.name}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
                                     </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -119,4 +121,55 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Windows launcher (mvn package -P windows-portable), used by packaging/windows/build-portable.sh -->
+        <profile>
+            <id>windows-portable</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                        <artifactId>launch4j-maven-plugin</artifactId>
+                        <version>2.7.0</version>
+                        <executions>
+                            <execution>
+                                <id>windows-exe</id>
+                                <phase>package</phase>
+                                <goals><goal>launch4j</goal></goals>
+                                <configuration>
+                                    <headerType>gui</headerType>
+                                    <outfile>${project.build.directory}/MQToolNG.exe</outfile>
+                                    <!-- The jar stays next to the exe; the exe runs it with the bundled jre folder -->
+                                    <dontWrapJar>true</dontWrapJar>
+                                    <jar>MQToolNG.jar</jar>
+                                    <!-- Settings, connections and logs are kept next to the exe (portable) -->
+                                    <chdir>.</chdir>
+                                    <icon>${project.basedir}/packaging/windows/MQToolNG.ico</icon>
+                                    <errTitle>MQToolNG</errTitle>
+                                    <downloadUrl>https://adoptium.net/temurin/releases/?version=21</downloadUrl>
+                                    <jre>
+                                        <path>jre</path>
+                                        <requiresJdk>false</requiresJdk>
+                                        <requires64Bit>true</requires64Bit>
+                                    </jre>
+                                    <versionInfo>
+                                        <fileVersion>${project.version}.0</fileVersion>
+                                        <txtFileVersion>${project.version}</txtFileVersion>
+                                        <fileDescription>MQToolNG - IBM MQ administration tool</fileDescription>
+                                        <copyright>GPL-3.0</copyright>
+                                        <productVersion>${project.version}.0</productVersion>
+                                        <txtProductVersion>${project.version}</txtProductVersion>
+                                        <productName>MQToolNG</productName>
+                                        <internalName>MQToolNG</internalName>
+                                        <originalFilename>MQToolNG.exe</originalFilename>
+                                    </versionInfo>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

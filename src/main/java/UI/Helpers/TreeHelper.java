@@ -35,7 +35,7 @@ public class TreeHelper {
         DefaultTreeModel model = (DefaultTreeModel)TreeView.getModel();
         DefaultMutableTreeNode root = (DefaultMutableTreeNode)model.getRoot();
         root.removeAllChildren();
-        TreeNodeObject rootObject = new TreeNodeObject("MQ Admin Explorer", TreeNodeObject.TreeNodeObjectType.Root);        
+        TreeNodeObject rootObject = new TreeNodeObject(UI.AppInfo.NAME, TreeNodeObject.TreeNodeObjectType.Root);        
         TreeNodeObject queueManagerFolderObject = new TreeNodeObject("Queue Managers", TreeNodeObject.TreeNodeObjectType.QueueManagerFolder);
         root.setUserObject(rootObject);
         DefaultMutableTreeNode queueManagerParentNode  = new DefaultMutableTreeNode(queueManagerFolderObject);

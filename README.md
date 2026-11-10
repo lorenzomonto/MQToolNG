@@ -18,6 +18,11 @@ Modified in November 2026:
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
+## Download
+
+The portable Windows version (64 bit) is on the [Releases](https://github.com/lorenzomonto/MQToolNG/releases) page:
+extract the zip and run `MQToolNG.exe`. Java and the IBM MQ client are included, nothing has to be installed.
+
 ## Requirements
 
 - Java 21 (JDK to build, JRE to run)
@@ -30,8 +35,17 @@ The `bounce` XML editor kit is not published there and is kept in `lib/repo`.
 
 ```
 mvn package
-java -jar target/MQAdminTool.jar
+java -jar target/MQToolNG.jar
 ```
+
+To build the portable Windows zip (on Linux or macOS, needs `curl`, `zip` and `sha256sum`):
+
+```
+packaging/windows/build-portable.sh
+```
+
+It creates `target/MQToolNG-<version>-windows-x64.zip` with `MQToolNG.exe` (launch4j), `MQToolNG.jar`
+and an Eclipse Temurin 21 JRE for Windows.
 
 `ConnectionSettings.xml`, `Settings.xml` and the `Logs` folder are read and written in the working directory.
 

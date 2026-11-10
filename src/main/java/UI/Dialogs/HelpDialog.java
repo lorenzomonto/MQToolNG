@@ -24,11 +24,13 @@ public class HelpDialog extends javax.swing.JDialog {
     public HelpDialog(java.awt.Frame parent, boolean modal) {
         super(parent, modal);
         initComponents();
-        String text = "<p>This project is developed by Jianbin Zhou for study purposes.</p>" +
-                      "<p>It is writen in Java 1.8 and uses IBM MQ client ver 8.0.</p>" +
-                      "<p>Please report any bug or suggestions to my email address " +
-                        "<a href='mailto:curtiszhou1981@gmail.com'>curtiszhou1981@gmail.com</a></p>"+
-                      "<p>Icons from Icon8 <a href=\"https://icons8.com/\">https://icons8.com/</a>" +
+        String text = "<p><b>" + UI.AppInfo.NAME + " " + UI.AppInfo.Version() + "</b></p>" +
+                      "<p>A modernized fork of MQAdminTool, originally developed by Jianbin Zhou " +
+                        "(<a href='https://github.com/bintoo/MQAdminTool'>github.com/bintoo/MQAdminTool</a>).</p>" +
+                      "<p>Written in Java 21 and using the IBM MQ client 9.4. Released under the GNU General Public License v3.0.</p>" +
+                      "<p>Please report bugs and suggestions at " +
+                        "<a href='" + UI.AppInfo.REPOSITORY_URL + "/issues'>" + UI.AppInfo.REPOSITORY_URL + "/issues</a></p>" +
+                      "<p>Icons from Lucide <a href=\"https://lucide.dev/\">https://lucide.dev/</a></p>" +
                       "<p>Known issues :\n" +
                         "<ul>" +
                           " <li>Update message feature not working correctly when the queue has more then 1 message with same id.</li>" +
@@ -91,7 +93,7 @@ public class HelpDialog extends javax.swing.JDialog {
         setModal(true);
 
         jLabel1.setFont(new java.awt.Font("Tahoma", 1, 16)); // NOI18N
-        jLabel1.setText("       MQ Admin Tool (BETA build 1.0.071)");
+        jLabel1.setText("       " + UI.AppInfo.NAME + " " + UI.AppInfo.Version());
         jLabel1.setPreferredSize(new java.awt.Dimension(300, 50));
 
         TextPane.setFont(new java.awt.Font("Tahoma", 0, 10)); // NOI18N

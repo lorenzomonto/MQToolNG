@@ -26,7 +26,7 @@ public class ExceptionHandler implements Thread.UncaughtExceptionHandler{
         
         LogWriter.WriteToLog(e);
         if(t.getId() == mainThreadId){
-            JOptionPane.showMessageDialog(null, "The program has encountered a fatal error and needs to be closed.\n\r\n\rPlease check the log and report to Jianbin for furture improvement.", "MQ Admin Tool Fatal error",JOptionPane.ERROR_MESSAGE );
+            JOptionPane.showMessageDialog(null, "The program has encountered a fatal error and needs to be closed.\n\r\n\rPlease check the log and report the problem at " + UI.AppInfo.REPOSITORY_URL + "/issues", UI.AppInfo.NAME + " fatal error",JOptionPane.ERROR_MESSAGE );
             System.exit(1);
         }
     }
