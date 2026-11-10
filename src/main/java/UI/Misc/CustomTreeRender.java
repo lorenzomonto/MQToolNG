@@ -34,11 +34,11 @@ public class CustomTreeRender extends DefaultTreeCellRenderer {
         }
         else if(isQueueManagerNodeAndConnected(value)){
             setIcon(iconManager.QueueMgrConnectedIcon()); 
-            setQueueManagerText(value, sel);
+            setQueueManagerText(tree, value, sel);
         }
         else if(isQueueManagerNodeNotConnected(value)){
             setIcon(iconManager.QueueMgrDisconnectedIcon());
-            setQueueManagerText(value, sel);
+            setQueueManagerText(tree, value, sel);
         }
         else if(isQueueFolder(value)){
             setIcon(iconManager.Queue());
@@ -55,20 +55,21 @@ public class CustomTreeRender extends DefaultTreeCellRenderer {
         else if(isSubFolder(value)){
             setIcon(iconManager.SubIcon());
         }
-        if(sel){
-            // Colored icons would disappear on the selection background: use the selection text color
+        if(sel && tree.isFocusOwner()){
+            // Colored icons would disappear on the accent colored selection: use the selection text color
             setIcon(IconManager.InColor(getIcon(), getForeground()));
         }
         return this;
     }
     
     // Queue manager name, followed by host:port in a secondary color
-    private void setQueueManagerText(Object value, boolean selected){
+    private void setQueueManagerText(JTree tree, Object value, boolean selected){
         TreeNodeObject nodeInfo = getTreeNodeObject(value);
         if(nodeInfo.ConnectionDetail == null){
             return;
         }
-        Color muted = selected ? getForeground() : UIManager.getColor("Label.disabledForeground");
+        // On the accent colored selection (focused tree) the secondary text uses the selection text color
+        Color muted = selected && tree.isFocusOwner() ? getForeground() : UIManager.getColor("Label.disabledForeground");
         String hex = String.format("#%06x", muted.getRGB() & 0xFFFFFF);
         setText("<html>" + escape(nodeInfo.Name) + "&nbsp;&nbsp;<font color='" + hex + "'>"
                 + escape(nodeInfo.ConnectionDetail.Host + ":" + nodeInfo.ConnectionDetail.Port) + "</font></html>");

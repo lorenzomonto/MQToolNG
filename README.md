@@ -53,6 +53,15 @@ and an Eclipse Temurin 21 JRE for Windows.
 The project can be opened directly in NetBeans, IntelliJ IDEA or Eclipse as a Maven project.
 The NetBeans GUI builder `.form` files are next to their classes in `src/main/java`.
 
+## Queue manager page
+
+Selecting a connected queue manager shows its overview (`UI/Overview/QueueManagerOverviewPanel`):
+status, version and key figures, the checks that need attention (full queues, stopped services and channels,
+dead-letter queue, disk and log usage, pending events, security notes; `MQApi/Overview/QueueManagerHealth`),
+the busiest queues, services, recovery log and key settings. **Properties** opens every attribute,
+grouped and searchable (`UI/Overview/QueueManagerPropertiesDialog`). The data comes from INQUIRE QMGR,
+QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi/Overview/QueueManagerOverview`).
+
 ## Connection passwords
 
 - A connection with a user and no saved password asks for the password when connecting;

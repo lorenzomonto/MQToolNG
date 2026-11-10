@@ -1070,6 +1070,20 @@ public class MQPCF {
         return msg;
     }
     
+    /**
+     * Sends any PCF command with a pooled agent. Error responses are returned, not thrown,
+     * so the caller can check each response's completion code.
+     */
+    public static PCFMessage[] Send(MQQueueManager queueManager, PCFMessage command) throws MQDataException, IOException{
+        PCFMessageAgent agent = getPCFMessageAgent(queueManager);
+        try {
+            agent.setCheckResponses(false);
+            return agent.send(command);
+        } finally {
+            disconnectAgent(agent);
+        }
+    }
+
     private static PCFMessageAgent getPCFMessageAgent(MQQueueManager queueManager) throws MQDataException{
         return PCFAgentPool.Acquire(queueManager, MQPCF::createPCFMessageAgent);
     }

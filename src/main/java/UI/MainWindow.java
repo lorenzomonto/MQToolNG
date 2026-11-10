@@ -74,6 +74,9 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import javax.swing.SwingWorker;
+import MQApi.Overview.QueueManagerOverview;
+import UI.Overview.QueueManagerOverviewPanel;
+import UI.Overview.QueueManagerPropertiesDialog;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import com.formdev.flatlaf.FlatClientProperties;
@@ -118,6 +121,11 @@ public class MainWindow extends javax.swing.JFrame {
     private SettingsModel settingsModel = new SettingsModel();
     private final Set<DefaultMutableTreeNode> connectingNodes = new HashSet<DefaultMutableTreeNode>();
     private final javax.swing.JLabel ContentTitleLabel = new javax.swing.JLabel();
+    // Queue manager page, shown in place of the table when a queue manager is selected
+    private final QueueManagerOverviewPanel overviewPanel = new QueueManagerOverviewPanel(new OverviewActions());
+    private DefaultMutableTreeNode overviewNode;
+    private QueueManagerOverview overviewData;
+    private String pendingSearch;
     public MainWindow() {      
         Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
         this.setLocation(dim.width/2-this.getSize().width/2 - 450, dim.height/2-this.getSize().height/2 - 350);
@@ -828,6 +836,7 @@ public class MainWindow extends javax.swing.JFrame {
                     LogWriter.WriteToLog("MainWindow", "getTreeViewQueueManagerPopupMenu", ex);
                     showErrorMessage(ex.getMessage());
                 }
+                showTableData(true);
             }
         });
         editMenuItem.addActionListener(new java.awt.event.ActionListener() {
@@ -1140,6 +1149,111 @@ public class MainWindow extends javax.swing.JFrame {
         updateContentTitle();
     }
 
+    private void showTableView(){
+        if(jScrollPane2.getViewport().getView() != ContentTable){
+            jScrollPane2.setViewportView(ContentTable);
+            FilterPanel.setVisible(true);
+        }
+    }
+
+    private void showQueueManagerOverview(DefaultMutableTreeNode node){
+        resetTimmer();
+        TableHelper.ToggleContentTable(ContentTable, false);
+        showContentTableLoading(false);
+        overviewNode = node;
+        overviewData = null;
+        if(jScrollPane2.getViewport().getView() != overviewPanel){
+            jScrollPane2.setViewportView(overviewPanel);
+            // The page has its own title and buttons: the list toolbar would only repeat the name
+            FilterPanel.setVisible(false);
+        }
+        TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
+        String name = nodeObject.ConnectionDetail.QueueManager;
+        if(!nodeObject.IsConnected()){
+            overviewPanel.ShowNotConnected(name, nodeObject.ConnectionDetail.Host + ":" + nodeObject.ConnectionDetail.Port);
+            return;
+        }
+        overviewPanel.ShowLoading(name);
+        final MQQueueManager queueManager = nodeObject.QueueManager;
+        new SwingWorker<QueueManagerOverview, Void>() {
+            @Override
+            protected QueueManagerOverview doInBackground() {
+                return QueueManagerOverview.Load(queueManager);
+            }
+
+            @Override
+            protected void done() {
+                if(overviewNode != node){
+                    return; // another node was selected meanwhile
+                }
+                try {
+                    overviewData = get();
+                    if(overviewData.Config.isEmpty() && overviewData.Status.isEmpty()){
+                        overviewPanel.ShowError(name, String.join(", ", overviewData.Errors.values()));
+                    }
+                    else{
+                        overviewPanel.ShowOverview(name, overviewData);
+                    }
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    LogWriter.WriteToLog(ex.getCause());
+                    overviewPanel.ShowError(name, String.valueOf(ex.getCause().getMessage()));
+                }
+            }
+        }.execute();
+    }
+
+    private class OverviewActions implements QueueManagerOverviewPanel.Actions {
+        @Override
+        public void Refresh() {
+            showTableData(true);
+        }
+
+        @Override
+        public void ShowProperties() {
+            if(overviewData != null && overviewNode != null){
+                TreeNodeObject nodeObject = (TreeNodeObject) overviewNode.getUserObject();
+                new QueueManagerPropertiesDialog(MainWindow.this, nodeObject.ConnectionDetail.QueueManager, overviewData).setVisible(true);
+            }
+        }
+
+        @Override
+        public void Connect() {
+            connectSelectedQueueManager();
+        }
+
+        @Override
+        public void ShowQueue(String queueName) {
+            if(overviewNode == null){
+                return;
+            }
+            for(int i = 0; i < overviewNode.getChildCount(); i++){
+                DefaultMutableTreeNode child = (DefaultMutableTreeNode) overviewNode.getChildAt(i);
+                if(((TreeNodeObject) child.getUserObject()).Type == TreeNodeObject.TreeNodeObjectType.Queues){
+                    pendingSearch = queueName;
+                    TreeView.setSelectionPath(new TreePath(child.getPath()));
+                    return;
+                }
+            }
+        }
+
+        @Override
+        public void BrowseQueue(String queueName) {
+            if(overviewNode == null){
+                return;
+            }
+            TreeNodeObject nodeObject = (TreeNodeObject) overviewNode.getUserObject();
+            TableListObject queue = new TableListObject();
+            queue.ObjectName = queueName;
+            queue.TableType = MQApi.Enums.TableContentType.QueueList;
+            queue.Type = MQApi.Enums.QueueType.Local;
+            BrowseMessageDialog dialog = new BrowseMessageDialog(MainWindow.this, false, nodeObject.QueueManager, queue);
+            dialog.setLocationRelativeTo(MainWindow.this);
+            dialog.setVisible(true);
+        }
+    }
+
     private void applySearch(){
         if(SearchTextField.isEnabled()){
             this.activedSearchString = this.SearchTextField.getText();
@@ -1281,6 +1395,11 @@ public class MainWindow extends javax.swing.JFrame {
         if(path != null){
             DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
             TreeNodeObject nodeObject = (TreeNodeObject)node.getUserObject();           
+            if(nodeObject.Type == TreeNodeObject.TreeNodeObjectType.QueueManager){
+                showQueueManagerOverview(node);
+                return;
+            }
+            showTableView();
             switch(nodeObject.Type){
                 case Queues:{
                     CurrentUpdateTask = displayQueueList(node, loadNewData);
@@ -1711,8 +1830,10 @@ public class MainWindow extends javax.swing.JFrame {
     private void treeSelectionChangeActionPerform(TreeSelectionEvent e){
         updateContentTitle();
 
-        this.SearchTextField.setText("");
-        this.activedSearchString = "";
+        String search = pendingSearch != null ? pendingSearch : "";
+        pendingSearch = null;
+        this.SearchTextField.setText(search);
+        this.activedSearchString = search;
         if(CurrentUpdateTask != null){
             CurrentUpdateTask.StopTask();
 
@@ -1772,6 +1893,7 @@ public class MainWindow extends javax.swing.JFrame {
                 setCursor(Cursor.getDefaultCursor());
                 try {
                     TreeHelper.AddConnectedQueueManagerNode(TreeView, selectedNode, get());
+                    showTableData(true);
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 } catch (ExecutionException ex) {
