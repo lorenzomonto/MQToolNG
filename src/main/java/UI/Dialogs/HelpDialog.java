@@ -107,7 +107,7 @@ public class HelpDialog extends javax.swing.JDialog {
                 .addContainerGap()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addComponent(jScrollPane2)
-                    .addComponent(jLabel1, javax.swing.GroupLayout.DEFAULT_SIZE, 380, Short.MAX_VALUE))
+                    .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addContainerGap())
         );
         layout.setVerticalGroup(
@@ -126,6 +126,14 @@ public class HelpDialog extends javax.swing.JDialog {
     /**
      * @param args the command line arguments
      */
+
+    @Override
+    public void setVisible(boolean visible) {
+        if (visible) {
+            UI.Helpers.DialogLayoutFixer.Apply(this);
+        }
+        super.setVisible(visible);
+    }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextPane TextPane;

@@ -84,7 +84,7 @@ public class StopChannelDialog extends DialogBase {
         setPreferredSize(new java.awt.Dimension(500, 400));
         setResizable(false);
 
-        jLabel1.setText("Channel manager name:");
+        jLabel1.setText("Queue manager name:");
         jLabel1.setPreferredSize(new java.awt.Dimension(150, 25));
 
         QueueManagerNameLabel.setPreferredSize(new java.awt.Dimension(300, 25));
@@ -214,7 +214,7 @@ public class StopChannelDialog extends DialogBase {
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(RemoteQueueManagerLabel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(RemoteQueueManagerTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(93, Short.MAX_VALUE))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());

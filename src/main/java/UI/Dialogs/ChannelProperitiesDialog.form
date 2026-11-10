@@ -218,7 +218,7 @@
                           <Component id="CopyFromTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                           <Component id="SelectObjectButton" alignment="3" min="-2" max="-2" attributes="0"/>
                       </Group>
-                      <EmptySpace pref="317" max="32767" attributes="0"/>
+                      <EmptySpace max="32767" attributes="0"/>
                   </Group>
               </Group>
             </DimensionLayout>
@@ -500,7 +500,7 @@
                                           <Component id="LocalCommunicationAddressLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="LocalCommunicationAddressTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="127" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1134,7 +1134,7 @@
                                   <Component id="jSeparator3" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel6" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -1243,7 +1243,7 @@
                                           <Component id="CLWLQueueWeightLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="CLWLChanneWeightSpinner" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="93" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1459,7 +1459,7 @@
                                   <Component id="jSeparator4" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel7" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -1545,7 +1545,7 @@
                                           <Component id="MCAUserIdLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="MCAUserIdTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="277" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1614,7 +1614,7 @@
                                   <Component id="jSeparator5" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel8" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="355" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -1760,7 +1760,7 @@
                                           <Component id="SecurityExitUserDataLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="SecurityExitUserDataTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="126" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1908,7 +1908,7 @@
                                   <Component id="jSeparator6" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel9" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2014,7 +2014,7 @@
                                           <Component id="LongRetryIntervalLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="LongRetryIntervalSpinner" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="216" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -2114,7 +2114,7 @@
                                   <Component id="jSeparator7" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel10" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2220,7 +2220,7 @@
                                           <Component id="ChannelStatisticsLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="ChannelStatisticComboBox" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="247" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -2326,7 +2326,7 @@
                                   <Component id="jSeparator8" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" alignment="0" attributes="0">
                                       <Component id="jLabel14" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2432,7 +2432,7 @@
                                           <Component id="MessageRetryExitUserDataLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="MessageRetryExitUserDataTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="216" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>

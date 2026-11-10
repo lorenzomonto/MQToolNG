@@ -105,7 +105,7 @@
       <SubComponents>
         <Component class="javax.swing.JLabel" name="jLabel1">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Channel manager name:"/>
+            <Property name="text" type="java.lang.String" value="Queue manager name:"/>
             <Property name="preferredSize" type="java.awt.Dimension" editor="org.netbeans.beaninfo.editors.DimensionEditor">
               <Dimension value="[150, 25]"/>
             </Property>
@@ -224,7 +224,7 @@
                       <Component id="RemoteQueueManagerLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="RemoteQueueManagerTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                   </Group>
-                  <EmptySpace pref="93" max="32767" attributes="0"/>
+                  <EmptySpace max="32767" attributes="0"/>
               </Group>
           </Group>
         </DimensionLayout>

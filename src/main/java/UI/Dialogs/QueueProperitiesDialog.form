@@ -218,7 +218,7 @@
                           <Component id="CopyFromTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                           <Component id="SelectObjectButton" alignment="3" min="-2" max="-2" attributes="0"/>
                       </Group>
-                      <EmptySpace pref="317" max="32767" attributes="0"/>
+                      <EmptySpace max="32767" attributes="0"/>
                   </Group>
               </Group>
             </DimensionLayout>
@@ -1346,7 +1346,7 @@
                                   <Component id="jSeparator3" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel6" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -1455,7 +1455,7 @@
                                           <Component id="ClusterWorkloadUseQueueLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="ClusterWorkloadComboBox" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="93" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1679,7 +1679,7 @@
                                   <Component id="jSeparator4" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel7" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -1823,7 +1823,7 @@
                                           <Component id="ProcessNameLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="ProcessNameTextField" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="122" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -1993,7 +1993,7 @@
                                   <Component id="jSeparator5" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel8" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="355" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2129,7 +2129,7 @@
                                           <Component id="QueueServiceIntervalLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="QueueServiceIntervalSpinner" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="122" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -2296,7 +2296,7 @@
                                   <Component id="jSeparator6" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel9" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2412,7 +2412,7 @@
                                           <Component id="NPMClassLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="NPMClassComboBox" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="216" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>
@@ -2527,7 +2527,7 @@
                                   <Component id="jSeparator7" alignment="0" max="32767" attributes="0"/>
                                   <Group type="102" attributes="0">
                                       <Component id="jLabel10" min="-2" max="-2" attributes="0"/>
-                                      <EmptySpace min="0" pref="350" max="32767" attributes="0"/>
+                                      <EmptySpace min="0" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                               <EmptySpace max="-2" attributes="0"/>
@@ -2693,7 +2693,7 @@
                                           <Component id="QueueAccountingLabel" alignment="3" min="-2" max="-2" attributes="0"/>
                                           <Component id="QueueAccountingComboBox" alignment="3" min="-2" max="-2" attributes="0"/>
                                       </Group>
-                                      <EmptySpace pref="29" max="32767" attributes="0"/>
+                                      <EmptySpace max="32767" attributes="0"/>
                                   </Group>
                               </Group>
                             </DimensionLayout>

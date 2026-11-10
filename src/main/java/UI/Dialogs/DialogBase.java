@@ -60,6 +60,15 @@ public abstract class DialogBase extends javax.swing.JDialog {
         }
     } 
     
+    @Override
+    public void setVisible(boolean visible) {
+        if (visible) {
+            // Sizes of the generated layout adapted to the current look and feel (once per dialog)
+            UI.Helpers.DialogLayoutFixer.Apply(this);
+        }
+        super.setVisible(visible);
+    }
+
     protected void Close(){
         this.setVisible(false);
         this.dispose();       
