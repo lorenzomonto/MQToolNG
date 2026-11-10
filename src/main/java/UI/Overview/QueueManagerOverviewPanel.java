@@ -196,6 +196,9 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         if (!started.isEmpty()) {
             text.append(" · running since ").append(started);
         }
+        if (overview.Encrypted != null) {
+            text.append(overview.Encrypted ? " · TLS" : " · not encrypted");
+        }
         return text.toString();
     }
 

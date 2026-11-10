@@ -37,6 +37,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
@@ -761,6 +762,17 @@ public class MQUtility {
         
     }
  
+    /**
+     * Classes a backup file may contain: the values of the MQMessage fields (numbers, byte arrays,
+     * dates with their time zone) and strings. A backup file comes from outside: any other class is
+     * rejected, so a crafted file cannot run code while it is read (Java deserialization attack).
+     */
+    public static final ObjectInputFilter BACKUP_FILE_FILTER = ObjectInputFilter.Config.createFilter(
+            "java.lang.String;java.lang.Number;java.lang.Integer;java.lang.Long;java.lang.Boolean;"
+            + "java.util.Calendar;java.util.GregorianCalendar;java.util.TimeZone;java.util.SimpleTimeZone;"
+            + "sun.util.calendar.ZoneInfo;[B;[I;[Z;"
+            + "maxdepth=20;maxarray=10000000;!*");
+
     public static void RestoreMessageFromFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, boolean isAlias, boolean checkQueueDepth) throws Exception{
         FileInputStream fileInputStream = null;
         ObjectInputStream objectInputStream = null;  
@@ -781,6 +793,7 @@ public class MQUtility {
                 bufferedInputStream = new BufferedInputStream(fileInputStream);
                 objectInputStream = new ObjectInputStream(bufferedInputStream);
             }
+            objectInputStream.setObjectInputFilter(BACKUP_FILE_FILTER);
             
             try {
                 String fileIdentifier = (String)objectInputStream.readObject();

@@ -82,6 +82,9 @@ public class QueueManagerOverview {
 
     public int ChannelAuthRules = -1;
 
+    /** Whether this tool's connection uses TLS; null when not known. */
+    public Boolean Encrypted;
+
     /** Part name → error message, for the parts that could not be read. */
     public final Map<String, String> Errors = new LinkedHashMap<>();
     public LocalDateTime LoadedAt;

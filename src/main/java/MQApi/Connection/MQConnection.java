@@ -47,11 +47,19 @@ public class MQConnection {
             else{
                 properties.put(MQConstants.USER_ID_PROPERTY, userId);
             }
+            if(connectionDetail.IsTlsEnabled()){
+                TlsSettings.Apply(connectionDetail, properties);
+            }
             try{
                 queueManager = new MQQueueManager(connectionDetail.QueueManager, properties);
             }catch(MQException ex){
-                // Retrying with the exit cannot help when the host is not reachable, it only doubles the wait
-                if(ex.getReason() == MQConstants.MQRC_HOST_NOT_AVAILABLE || ex.getReason() == MQConstants.MQRC_Q_MGR_NOT_AVAILABLE){
+                // The security exit is for queue managers older than MQ 7, which do not support TLS here either.
+                // Retrying cannot help an unreachable host, and after a refused password it would count
+                // as a second failed login (accounts get locked twice as fast).
+                if(connectionDetail.IsTlsEnabled()
+                        || ex.getReason() == MQConstants.MQRC_NOT_AUTHORIZED
+                        || ex.getReason() == MQConstants.MQRC_HOST_NOT_AVAILABLE
+                        || ex.getReason() == MQConstants.MQRC_Q_MGR_NOT_AVAILABLE){
                     throw ex;
                 }
                 properties.put("securityExit", new SecurityExit(null, null)); //for MQ ver < 7

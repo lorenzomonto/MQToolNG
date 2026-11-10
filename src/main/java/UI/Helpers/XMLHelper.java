@@ -6,6 +6,7 @@
 package UI.Helpers;
 
 import MQApi.Connection.SecurePasswordStore;
+import javax.xml.XMLConstants;
 import MQApi.Models.Query.ConnectionDetailModel;
 import UI.MainWindow;
 import UI.Models.MQRC.MQRCParentModel;
@@ -42,13 +43,38 @@ public class XMLHelper {
     private static String elementName = "ConnectionDetail";
     private static String rootName = "ConnectionSetting";
     private static String settingPath = "Settings.xml";
-    private static final String PASSWORD_FIELD = "Password";
-    private static final String ENCRYPTED_PASSWORD_ELEMENT = "EncryptedPassword";
+    /**
+     * XML parser that ignores DTDs and external entities. Message contents are untrusted:
+     * with the default parser a message could make the tool read local files or open
+     * network connections when it is displayed (XXE).
+     */
+    public static DocumentBuilderFactory SecureDocumentBuilderFactory() throws ParserConfigurationException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        return factory;
+    }
+
+    public static TransformerFactory SecureTransformerFactory() {
+        TransformerFactory factory = TransformerFactory.newInstance();
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+        return factory;
+    }
+
+    // Connection fields that are written encrypted, as "Encrypted<name>" elements
+    private static final java.util.List<String> SECRET_FIELDS = java.util.Arrays.asList("Password", "TrustStorePassword", "KeyStorePassword");
 
     public static void WriteConnectionModelToXml(ArrayList<ConnectionDetailModel> models, String filePath){
         
         try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory dbf = SecureDocumentBuilderFactory();
             
             DocumentBuilder db = dbf.newDocumentBuilder();       
             Document document = db.newDocument();
@@ -58,9 +84,9 @@ public class XMLHelper {
                 for(Field field : model.getClass().getFields()){
                     String name = field.getName();
                     String value = field.get(model) != null ? (field.get(model)).toString() : null;
-                    if(PASSWORD_FIELD.equals(name)){
+                    if(SECRET_FIELDS.contains(name)){
                         // Never written in clear: encrypted with DPAPI, or not saved at all
-                        name = ENCRYPTED_PASSWORD_ELEMENT;
+                        name = "Encrypted" + name;
                         value = SecurePasswordStore.Protect(value);
                     }
                     if(value != null){
@@ -72,7 +98,7 @@ public class XMLHelper {
                 rootElement.appendChild(connectionEle);
             }
             document.appendChild(rootElement);
-            Transformer tr = TransformerFactory.newInstance().newTransformer();
+            Transformer tr = SecureTransformerFactory().newTransformer();
             try(FileOutputStream out = new FileOutputStream(filePath)){
                 tr.transform(new DOMSource(document), new StreamResult(out));
             }
@@ -84,7 +110,7 @@ public class XMLHelper {
     public static ArrayList<ConnectionDetailModel> ReadConnectionModelFromXml(String filePath){
         ArrayList<ConnectionDetailModel> models = new ArrayList<ConnectionDetailModel>();
          try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory dbf = SecureDocumentBuilderFactory();
             DocumentBuilder db = dbf.newDocumentBuilder();
             File file = new File(filePath);
 
@@ -103,13 +129,17 @@ public class XMLHelper {
                        String fieldValue = getNodeValue(node, fieldName);
                        field.set(model, fieldValue);
                    }
-                   if(model.Password != null && !model.Password.isEmpty()){
-                       // Written in clear by older versions
-                       hasClearPasswords = true;
-                   }
-                   else{
-                       // Null when it cannot be decrypted (another Windows user or computer): asked when connecting
-                       model.Password = SecurePasswordStore.Unprotect(getNodeValue(node, ENCRYPTED_PASSWORD_ELEMENT));
+                   for(String secret : SECRET_FIELDS){
+                       Field field = model.getClass().getField(secret);
+                       Object clear = field.get(model);
+                       if(clear != null && !clear.toString().isEmpty()){
+                           // Written in clear by older versions
+                           hasClearPasswords = true;
+                       }
+                       else{
+                           // Null when it cannot be decrypted (another Windows user or computer): asked when connecting
+                           field.set(model, SecurePasswordStore.Unprotect(getNodeValue(node, "Encrypted" + secret)));
+                       }
                    }
                    models.add(model);
                }
@@ -129,7 +159,7 @@ public class XMLHelper {
         SettingsModel model = new SettingsModel();
         model.SkinName = "Light";
          try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory dbf = SecureDocumentBuilderFactory();
             DocumentBuilder db = dbf.newDocumentBuilder();
             File file = new File(settingPath);
             if(file.exists() && !file.isDirectory()) {
@@ -147,7 +177,7 @@ public class XMLHelper {
     public static void WriteSettingModelToXml(SettingsModel model){
         
         try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory dbf = SecureDocumentBuilderFactory();
             
             DocumentBuilder db = dbf.newDocumentBuilder();       
             Document document = db.newDocument();
@@ -156,7 +186,7 @@ public class XMLHelper {
             skinEle.appendChild(document.createTextNode(model.SkinName));
             rootElement.appendChild(skinEle);
             document.appendChild(rootElement);
-            Transformer tr = TransformerFactory.newInstance().newTransformer();
+            Transformer tr = SecureTransformerFactory().newTransformer();
             tr.transform(new DOMSource(document), new StreamResult(new FileOutputStream(settingPath)));
         } catch (Exception ex) {
             Logger.getLogger(XMLHelper.class.getName()).log(Level.SEVERE, null, ex);
@@ -167,7 +197,7 @@ public class XMLHelper {
         MQRCParentModel model = new MQRCParentModel();
         String filePath = "MQRCDefValue.xml";
         try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            DocumentBuilderFactory dbf = SecureDocumentBuilderFactory();
             
             DocumentBuilder db = dbf.newDocumentBuilder();       
             Document document = db.newDocument();
@@ -186,7 +216,7 @@ public class XMLHelper {
                 rootElement.appendChild(modelEle);
             }
             document.appendChild(rootElement);
-            Transformer tr = TransformerFactory.newInstance().newTransformer();
+            Transformer tr = SecureTransformerFactory().newTransformer();
             try(FileOutputStream out = new FileOutputStream(filePath)){
                 tr.transform(new DOMSource(document), new StreamResult(out));
             }
@@ -199,7 +229,7 @@ public class XMLHelper {
 
         try {
             final InputSource src = new InputSource(new StringReader(xml));
-            final Node document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(src).getDocumentElement();
+            final Node document = SecureDocumentBuilderFactory().newDocumentBuilder().parse(src).getDocumentElement();
             final Boolean keepDeclaration = Boolean.valueOf(xml.startsWith("<?xml"));
 
             //System.setProperty(DOMImplementationRegistry.PROPERTY,"com.sun.org.apache.xerces.internal.dom.DOMImplementationSourceImpl");
@@ -219,7 +249,7 @@ public class XMLHelper {
     public static boolean IsXML(String xml) {
          try {
             final InputSource src = new InputSource(new StringReader(xml));
-            final Node document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(src).getDocumentElement();
+            final Node document = SecureDocumentBuilderFactory().newDocumentBuilder().parse(src).getDocumentElement();
             return true;
         } catch (Exception e) {
             return false;

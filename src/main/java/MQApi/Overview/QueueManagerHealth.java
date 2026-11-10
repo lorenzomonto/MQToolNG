@@ -32,6 +32,7 @@ public class QueueManagerHealth {
         checkLog(o, checks);
         checkEvents(o, checks);
         checkSecurity(o, checks);
+        checkConnection(o, checks);
         checks.sort(Comparator.comparing(c -> c.Level));
         return checks;
     }
@@ -166,6 +167,15 @@ public class QueueManagerHealth {
         for (QueueDepth events : o.EventQueues) {
             checks.add(new HealthCheck(Severity.NOTE, events.Current == 1 ? "1 event to read" : MQFormat.Number(events.Current) + " events to read",
                     events.Name, ActionKind.BROWSE_QUEUE, events.Name));
+        }
+    }
+
+    private static void checkConnection(QueueManagerOverview o, List<HealthCheck> checks) {
+        if (Boolean.FALSE.equals(o.Encrypted)) {
+            checks.add(new HealthCheck(Severity.NOTE, "This connection is not encrypted",
+                    "Messages and the password travel in clear. TLS can be enabled in the connection settings (Edit)."));
+        } else if (Boolean.TRUE.equals(o.Encrypted)) {
+            checks.add(new HealthCheck(Severity.OK, "Connection encrypted with TLS", null));
         }
     }
 

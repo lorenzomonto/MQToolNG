@@ -26,6 +26,13 @@ A saved password is encrypted with Windows DPAPI: only your Windows user, on thi
 can decrypt it. On another computer or user the password is asked again when connecting.
 Passwords saved in clear by MQAdminTool are encrypted automatically at the first start.
 
+Encryption (TLS)
+----------------
+Connections are not encrypted unless you enable TLS for them: Edit the queue manager and check
+"Use TLS". The queue manager channel must have SSLCIPH set (e.g. ANY_TLS12_OR_HIGHER) and its
+certificate must be trusted: by default the certificates trusted by Windows are used, or choose a
+trust store file (.p12 or .jks). Without TLS, messages and passwords travel in clear on the network.
+
 Contents
 --------
   MQToolNG.exe             launcher

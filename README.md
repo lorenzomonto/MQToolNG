@@ -16,6 +16,7 @@ Modified in November 2026:
 - New user interface: FlatLaf with light and dark themes, Inter font, SVG icons, modern table and tree.
 - The name filter matches the names that contain the text, ignoring case.
 - Connection passwords are encrypted with Windows DPAPI, or asked when connecting instead of being saved.
+- TLS for the connections (optional), and fixes for XML external entities and backup file deserialization.
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
@@ -61,6 +62,18 @@ dead-letter queue, disk and log usage, pending events, security notes; `MQApi/Ov
 the busiest queues, services, recovery log and key settings. **Properties** opens every attribute,
 grouped and searchable (`UI/Overview/QueueManagerPropertiesDialog`). The data comes from INQUIRE QMGR,
 QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi/Overview/QueueManagerOverview`).
+
+## Security
+
+- **TLS** can be enabled per connection (Edit > Use TLS): TLS 1.2 or higher, TLS 1.3 only or a specific
+  cipher suite; trusted certificates from the Windows certificate store or a trust store file; an optional
+  client certificate (SSLCAUTH(REQUIRED)) and an optional expected server certificate name (SSLPEER).
+  Without TLS the connection works as before, not encrypted: the queue manager page shows it.
+  The channel must have a matching SSLCIPH (e.g. `ANY_TLS12_OR_HIGHER`). See `MQApi/Connection/TlsSettings`.
+- Message contents are parsed as XML without DTDs or external entities (no XXE), see `XMLHelper`.
+- Backup files are read with a deserialization filter that only accepts the types a backup contains
+  (`MQUtility.BACKUP_FILE_FILTER`); backups made by MQAdminTool are still accepted.
+- A refused password is not retried, so it counts as one failed login.
 
 ## Connection passwords
 

@@ -7,6 +7,7 @@ package UI;
 
 import MQApi.Connection.MQConnection;
 import MQApi.Connection.SecurePasswordStore;
+import MQApi.Connection.TlsSettings;
 import MQApi.Connection.SessionPasswords;
 import UI.Dialogs.PasswordPrompt;
 import MQApi.Enums.ChannelType;
@@ -74,6 +75,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import javax.swing.SwingWorker;
+import javax.swing.JButton;
 import MQApi.Overview.QueueManagerOverview;
 import UI.Overview.QueueManagerOverviewPanel;
 import UI.Overview.QueueManagerPropertiesDialog;
@@ -121,6 +123,7 @@ public class MainWindow extends javax.swing.JFrame {
     private SettingsModel settingsModel = new SettingsModel();
     private final Set<DefaultMutableTreeNode> connectingNodes = new HashSet<DefaultMutableTreeNode>();
     private final javax.swing.JLabel ContentTitleLabel = new javax.swing.JLabel();
+    private final UI.Dialogs.TlsSettingsPanel tlsSettingsPanel = new UI.Dialogs.TlsSettingsPanel();
     // Queue manager page, shown in place of the table when a queue manager is selected
     private final QueueManagerOverviewPanel overviewPanel = new QueueManagerOverviewPanel(new OverviewActions());
     private DefaultMutableTreeNode overviewNode;
@@ -164,14 +167,14 @@ public class MainWindow extends javax.swing.JFrame {
         TreeView = new javax.swing.JTree() {
             @Override
             public String getToolTipText(MouseEvent event) {
-                System.out.println(event.getComponent().toString());
-                TreePath path = TreeView.getClosestPathForLocation(event.getX(), event.getY());
-                System.out.println(((TreeNodeObject)
-                    ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject()).ConnectionDetail.toString());
-
-            return ((TreeNodeObject)
-                ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject()).ConnectionDetail.toString();
-        }
+                // Connection details of a queue manager node (never the password)
+                TreePath path = TreeView.getPathForLocation(event.getX(), event.getY());
+                if(path == null){
+                    return null;
+                }
+                TreeNodeObject nodeObject = (TreeNodeObject)((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
+                return nodeObject.ConnectionDetail != null ? nodeObject.ConnectionDetail.toString() : null;
+            }
     };
     ContentPanel = new javax.swing.JPanel();
     jScrollPane2 = new javax.swing.JScrollPane();
@@ -1098,6 +1101,7 @@ public class MainWindow extends javax.swing.JFrame {
         
         TreeView.setCellRenderer(new CustomTreeRender());
         initModernLook();
+        setupConnectionDetailDialog();
         //ContentTable.setDefaultRenderer(TableListObject.class, new CustomTableCellRender()); 
         this.TestMenuItem.setVisible(false);
         settingsModel = XMLHelper.ReadSettingsModelFromXml();
@@ -1188,6 +1192,7 @@ public class MainWindow extends javax.swing.JFrame {
                 }
                 try {
                     overviewData = get();
+                    overviewData.Encrypted = nodeObject.ConnectionDetail.IsTlsEnabled();
                     if(overviewData.Config.isEmpty() && overviewData.Status.isEmpty()){
                         overviewPanel.ShowError(name, String.join(", ", overviewData.Errors.values()));
                     }
@@ -1298,6 +1303,9 @@ public class MainWindow extends javax.swing.JFrame {
            connection.Port = "1414"; 
         }
         connection.QueueManager = this.QueueManagerTextBox.getText();  
+        connection.User = this.UserTextBox.getText();
+        connection.Password = new String(this.PasswordTextBox.getPassword());
+        tlsSettingsPanel.Save(connection);
         return connection;
     }    
     
@@ -1315,6 +1323,7 @@ public class MainWindow extends javax.swing.JFrame {
            this.PortTextBox.setText(model.Port);
            this.UserTextBox.setText(model.User);
            this.PasswordTextBox.setText(model.Password);
+           tlsSettingsPanel.Load(model);
            showConnectionDetailDialog("Edit queue manager");
         }
     }
@@ -1900,12 +1909,11 @@ public class MainWindow extends javax.swing.JFrame {
                     if(ex.getCause() instanceof MQException){
                         MQException mqEx = (MQException) ex.getCause();
                         LogWriter.WriteToLog("MainWindow", "getTreeViewQueueManagerPopupMenu", mqEx);
-                        if(mqEx.exceptionSource instanceof String){
-                            showErrorMessage((String)mqEx.exceptionSource);
-                        }
-                        else{
-                            showErrorMessage(MQUtility.getMQReturnMessage(mqEx.getCompCode(), mqEx.getReason()));
-                        }
+                        String message = mqEx.exceptionSource instanceof String
+                                ? (String)mqEx.exceptionSource
+                                : MQUtility.getMQReturnMessage(mqEx.getCompCode(), mqEx.getReason());
+                        String hint = TlsSettings.Hint(mqEx.getReason(), connectionDetail.IsTlsEnabled());
+                        showErrorMessage(hint == null ? message : message + "\n\n" + hint);
                     }
                     else{
                         LogWriter.WriteToLog(ex.getCause());
@@ -1978,7 +1986,8 @@ public class MainWindow extends javax.swing.JFrame {
             model.Port = this.PortTextBox.getText();
             model.QueueManager = this.QueueManagerTextBox.getText();
             model.User = this.UserTextBox.getText();
-            model.Password = this.PasswordTextBox.getText();
+            model.Password = new String(this.PasswordTextBox.getPassword());
+            tlsSettingsPanel.Save(model);
             TreeHelper.RefreshTreeView(TreeView, model);
         }
         XMLHelper.WriteConnectionModelToXml(ConnectionDetailModels, SettingFilePath);
@@ -2114,16 +2123,36 @@ public class MainWindow extends javax.swing.JFrame {
     }
      
     private void addQueueManageMenuItemActionPerformed(java.awt.event.ActionEvent evt){
+        tlsSettingsPanel.Load(null);
         showConnectionDetailDialog("Add queue manager");
+    }
+
+    private void setupConnectionDetailDialog(){
+        // The generated form keeps the fields; the TLS section and the buttons go below it
+        java.awt.Container fields = ConnectionDetailDialog.getContentPane();
+        AddtButton.setVisible(false);
+        CancelBitton.setVisible(false);
+        JButton ok = new JButton("OK");
+        ok.addActionListener(e -> AddtButtonActionPerformed(e));
+        JButton cancel = new JButton("Cancel");
+        cancel.addActionListener(e -> CancelBittonActionPerformed(e));
+        javax.swing.JPanel buttons = new javax.swing.JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
+        buttons.add(ok);
+        buttons.add(cancel);
+        javax.swing.JPanel root = new javax.swing.JPanel(new java.awt.BorderLayout(0, 12));
+        root.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 14));
+        root.add(fields, java.awt.BorderLayout.NORTH);
+        root.add(tlsSettingsPanel, java.awt.BorderLayout.CENTER);
+        root.add(buttons, java.awt.BorderLayout.SOUTH);
+        ConnectionDetailDialog.setContentPane(root);
+        ConnectionDetailDialog.getRootPane().setDefaultButton(ok);
     }
 
     private void showConnectionDetailDialog(String title){
         ConnectionDetailDialog.setTitle(title);
-        ConnectionDetailDialog.getRootPane().setDefaultButton(AddtButton);
         PasswordTextBox.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, SecurePasswordStore.IsAvailable()
                 ? "Saved encrypted, or empty to be asked"
                 : "Not saved; empty to be asked when connecting");
-        ((javax.swing.JComponent) ConnectionDetailDialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 8));
         // Size the dialog to its content: its fixed minimum size was made for the old look and feel
         ConnectionDetailDialog.pack();
         ConnectionDetailDialog.setLocationRelativeTo(this);
