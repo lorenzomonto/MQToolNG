@@ -35,9 +35,14 @@ public class MQConnection {
             properties.put("transport", "MQSeries");
             //properties.put(MQConstants.APPNAME_PROPERTY, "MQ Admin Tool");
             if(connectionDetail.User != null && !connectionDetail.User.isEmpty()){
+                // The password is either saved with the connection or typed by the user for this session
+                String password = SessionPasswords.Resolve(connectionDetail);
+                if(password == null){
+                    throw new MQException(MQConstants.MQCC_FAILED, MQConstants.MQRC_NOT_AUTHORIZED, "Password not entered");
+                }
                 properties.put(MQConstants.USE_MQCSP_AUTHENTICATION_PROPERTY, true);
                 properties.put(MQConstants.USER_ID_PROPERTY, connectionDetail.User);
-                properties.put(MQConstants.PASSWORD_PROPERTY, connectionDetail.Password);               
+                properties.put(MQConstants.PASSWORD_PROPERTY, password);               
             }
             else{
                 properties.put(MQConstants.USER_ID_PROPERTY, userId);
@@ -65,6 +70,10 @@ public class MQConnection {
             if(queueManager != null){
                 queueManager.disconnect();
                 queueManager.close();
+            }
+            if(ex.getReason() == MQConstants.MQRC_NOT_AUTHORIZED){
+                // Wrong password typed by the user: ask again at the next connection
+                SessionPasswords.Forget(connectionDetail);
             }
             throw ex;
         }

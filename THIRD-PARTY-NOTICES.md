@@ -4,6 +4,7 @@
 |---|---|---|
 | [MQAdminTool](https://github.com/bintoo/MQAdminTool) (original code) | GPL-3.0 | this project is a modified version |
 | [FlatLaf](https://www.formdev.com/flatlaf/), FlatLaf Extras, FlatLaf Inter font | Apache-2.0 (Inter font: OFL-1.1) | Maven dependency |
+| [JNA](https://github.com/java-native-access/jna) (Windows DPAPI access) | Apache-2.0 / LGPL-2.1 | Maven dependency |
 | [Apache POI](https://poi.apache.org/) | Apache-2.0 | Maven dependency |
 | [Bounce](http://www.edankert.com) 0.19 by Edwin Dankert | BSD | `lib/repo` |
 | [Lucide](https://lucide.dev) icons | ISC | `src/main/resources/Resources/Icons`, see `LICENSE-lucide.txt` |

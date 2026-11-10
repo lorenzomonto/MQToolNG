@@ -51,6 +51,12 @@
             <version>4.1</version>
         </dependency>
         <dependency>
+            <!-- Windows DPAPI, used to save connection passwords encrypted -->
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna-platform</artifactId>
+            <version>5.19.1</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi</artifactId>
             <version>${poi.version}</version>

@@ -6,6 +6,7 @@
 package UI.Helpers;
 
 import MQApi.PCF.PCFAgentPool;
+import MQApi.Connection.SessionPasswords;
 import MQApi.Connection.MQConnection;
 import MQApi.Models.Query.ConnectionDetailModel;
 import UI.MainWindow;
@@ -65,6 +66,7 @@ public class TreeHelper {
             try {
                 PCFAgentPool.ReleaseAll(nodeObject.QueueManager);
                 nodeObject.QueueManager.disconnect();
+                SessionPasswords.Forget(nodeObject.ConnectionDetail);
             } catch (MQException ex) {
                 Logger.getLogger(TreeHelper.class.getName()).log(Level.SEVERE, null, ex);
             }
@@ -116,6 +118,7 @@ public class TreeHelper {
         if(nodeObject.IsConnected()){
             PCFAgentPool.ReleaseAll(nodeObject.QueueManager);
             nodeObject.QueueManager.disconnect();
+            SessionPasswords.Forget(nodeObject.ConnectionDetail);
         }
     
     }

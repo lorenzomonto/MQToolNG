@@ -5,6 +5,7 @@
  */
 package UI.Helpers;
 
+import MQApi.Connection.SecurePasswordStore;
 import MQApi.Models.Query.ConnectionDetailModel;
 import UI.MainWindow;
 import UI.Models.MQRC.MQRCParentModel;
@@ -41,6 +42,9 @@ public class XMLHelper {
     private static String elementName = "ConnectionDetail";
     private static String rootName = "ConnectionSetting";
     private static String settingPath = "Settings.xml";
+    private static final String PASSWORD_FIELD = "Password";
+    private static final String ENCRYPTED_PASSWORD_ELEMENT = "EncryptedPassword";
+
     public static void WriteConnectionModelToXml(ArrayList<ConnectionDetailModel> models, String filePath){
         
         try {
@@ -54,6 +58,11 @@ public class XMLHelper {
                 for(Field field : model.getClass().getFields()){
                     String name = field.getName();
                     String value = field.get(model) != null ? (field.get(model)).toString() : null;
+                    if(PASSWORD_FIELD.equals(name)){
+                        // Never written in clear: encrypted with DPAPI, or not saved at all
+                        name = ENCRYPTED_PASSWORD_ELEMENT;
+                        value = SecurePasswordStore.Protect(value);
+                    }
                     if(value != null){
                         Element ele = document.createElement(name);
                         ele.appendChild(document.createTextNode(value));
@@ -64,7 +73,9 @@ public class XMLHelper {
             }
             document.appendChild(rootElement);
             Transformer tr = TransformerFactory.newInstance().newTransformer();
-            tr.transform(new DOMSource(document), new StreamResult(new FileOutputStream(filePath)));
+            try(FileOutputStream out = new FileOutputStream(filePath)){
+                tr.transform(new DOMSource(document), new StreamResult(out));
+            }
         } catch (Exception ex) {
             Logger.getLogger(XMLHelper.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -78,8 +89,11 @@ public class XMLHelper {
             File file = new File(filePath);
 
             if(file.exists() && !file.isDirectory()) {
-               FileInputStream fileStream = new FileInputStream(file);
-               Document document = db.parse(fileStream);
+               Document document;
+               try(FileInputStream fileStream = new FileInputStream(file)){
+                   document = db.parse(fileStream);
+               }
+               boolean hasClearPasswords = false;
                NodeList nodes = document.getElementsByTagName(elementName);
                for(int i = 0; i < nodes.getLength(); i++){
                    Node node = nodes.item(i);
@@ -89,8 +103,20 @@ public class XMLHelper {
                        String fieldValue = getNodeValue(node, fieldName);
                        field.set(model, fieldValue);
                    }
+                   if(model.Password != null && !model.Password.isEmpty()){
+                       // Written in clear by older versions
+                       hasClearPasswords = true;
+                   }
+                   else{
+                       // Null when it cannot be decrypted (another Windows user or computer): asked when connecting
+                       model.Password = SecurePasswordStore.Unprotect(getNodeValue(node, ENCRYPTED_PASSWORD_ELEMENT));
+                   }
                    models.add(model);
-               }               
+               }
+               if(hasClearPasswords){
+                   // Rewrite the file at once so the passwords in clear disappear from the disk
+                   WriteConnectionModelToXml(models, filePath);
+               }
             }
 
          }catch(Exception ex){
@@ -161,7 +187,9 @@ public class XMLHelper {
             }
             document.appendChild(rootElement);
             Transformer tr = TransformerFactory.newInstance().newTransformer();
-            tr.transform(new DOMSource(document), new StreamResult(new FileOutputStream(filePath)));
+            try(FileOutputStream out = new FileOutputStream(filePath)){
+                tr.transform(new DOMSource(document), new StreamResult(out));
+            }
         } catch (Exception ex) {
             Logger.getLogger(XMLHelper.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -208,7 +236,7 @@ public class XMLHelper {
         for(int i = 0; i < Nodes.getLength(); i++){
             Node fieldNode = Nodes.item(i);
             String name = fieldNode.getNodeName();
-            if(name != null && name == fieldName){
+            if(name != null && name.equals(fieldName)){
                 return fieldNode;
             }
         }        

@@ -6,6 +6,9 @@
 package UI;
 
 import MQApi.Connection.MQConnection;
+import MQApi.Connection.SecurePasswordStore;
+import MQApi.Connection.SessionPasswords;
+import UI.Dialogs.PasswordPrompt;
 import MQApi.Enums.ChannelType;
 import MQApi.Enums.MQObjectType;
 import MQApi.Enums.QueueType;
@@ -1077,6 +1080,7 @@ public class MainWindow extends javax.swing.JFrame {
         TreeHelper.InitTreeView(TreeView);
         TableHelper.InitTable(ContentTable);
         ConnectionDetailModels = XMLHelper.ReadConnectionModelFromXml(SettingFilePath);
+        SessionPasswords.SetSaver(() -> XMLHelper.WriteConnectionModelToXml(ConnectionDetailModels, SettingFilePath));
         initQueueManagerSetting();
         
         this.ContentTableProgressBar.setIndeterminate(true);
@@ -1746,6 +1750,13 @@ public class MainWindow extends javax.swing.JFrame {
         if(nodeObject.IsConnected()){
             return;
         }
+        // No saved password: ask for it at every connection, it is kept in memory only while connected
+        if(SessionPasswords.NeedsPassword(nodeObject.ConnectionDetail)){
+            SessionPasswords.Forget(nodeObject.ConnectionDetail);
+            if(!SessionPasswords.AskAndRemember(nodeObject.ConnectionDetail)){
+                return;
+            }
+        }
         connectingNodes.add(selectedNode);
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         final ConnectionDetailModel connectionDetail = nodeObject.ConnectionDetail;
@@ -1987,6 +1998,9 @@ public class MainWindow extends javax.swing.JFrame {
     private void showConnectionDetailDialog(String title){
         ConnectionDetailDialog.setTitle(title);
         ConnectionDetailDialog.getRootPane().setDefaultButton(AddtButton);
+        PasswordTextBox.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, SecurePasswordStore.IsAvailable()
+                ? "Saved encrypted, or empty to be asked"
+                : "Not saved; empty to be asked when connecting");
         ((javax.swing.JComponent) ConnectionDetailDialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 8));
         // Size the dialog to its content: its fixed minimum size was made for the old look and feel
         ConnectionDetailDialog.pack();
@@ -2003,6 +2017,7 @@ public class MainWindow extends javax.swing.JFrame {
         JFrame.setDefaultLookAndFeelDecorated(true);
         JDialog.setDefaultLookAndFeelDecorated(true);
         FlatLightLaf.setup();
+        SessionPasswords.SetPrompt(PasswordPrompt::Ask);
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
                 new MainWindow().setVisible(true);

@@ -13,10 +13,18 @@ choose "More info" and then "Run anyway".
 Your data
 ---------
 The program keeps its files in its own folder:
-  ConnectionSettings.xml   queue manager connections (passwords are stored in plain text)
+  ConnectionSettings.xml   queue manager connections
   Settings.xml             theme
   Logs\                    log files
 To move or update MQToolNG, copy these files to the new folder.
+
+Passwords
+---------
+Leave the password of a connection empty to be asked for it when connecting: it is then kept
+in memory only while the queue manager is connected.
+A saved password is encrypted with Windows DPAPI: only your Windows user, on this computer,
+can decrypt it. On another computer or user the password is asked again when connecting.
+Passwords saved in clear by MQAdminTool are encrypted automatically at the first start.
 
 Contents
 --------
