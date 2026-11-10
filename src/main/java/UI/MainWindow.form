@@ -28,7 +28,7 @@
                                   <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
                               </Group>
                               <Group type="102" alignment="1" attributes="0">
-                                  <Component id="jLabel2" pref="90" max="32767" attributes="0"/>
+                                  <Component id="jLabel2" max="32767" attributes="0"/>
                                   <EmptySpace type="unrelated" min="-2" max="-2" attributes="0"/>
                               </Group>
                               <Group type="102" alignment="1" attributes="0">
@@ -45,12 +45,12 @@
                               </Group>
                           </Group>
                           <Group type="103" groupAlignment="0" attributes="0">
-                              <Component id="HostTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
-                              <Component id="QueueManagerTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
-                              <Component id="ChannelTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
-                              <Component id="PortTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
-                              <Component id="UserTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
-                              <Component id="PasswordTextBox" alignment="0" min="-2" pref="200" max="-2" attributes="0"/>
+                              <Component id="HostTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
+                              <Component id="QueueManagerTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
+                              <Component id="ChannelTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
+                              <Component id="PortTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
+                              <Component id="UserTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
+                              <Component id="PasswordTextBox" alignment="0" min="-2" pref="280" max="-2" attributes="0"/>
                           </Group>
                           <EmptySpace min="-2" pref="10" max="-2" attributes="0"/>
                       </Group>

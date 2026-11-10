@@ -255,7 +255,7 @@ public class MainWindow extends javax.swing.JFrame {
                             .addComponent(jLabel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED))
                         .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, ConnectionDetailDialogLayout.createSequentialGroup()
-                            .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 90, Short.MAX_VALUE)
+                            .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED))
                         .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, ConnectionDetailDialogLayout.createSequentialGroup()
                             .addComponent(jLabel4, javax.swing.GroupLayout.PREFERRED_SIZE, 1, Short.MAX_VALUE)
@@ -267,12 +267,12 @@ public class MainWindow extends javax.swing.JFrame {
                             .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 1, Short.MAX_VALUE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)))
                     .addGroup(ConnectionDetailDialogLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addComponent(HostTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(QueueManagerTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(ChannelTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(PortTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(UserTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(PasswordTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(HostTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(QueueManagerTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(ChannelTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(PortTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(UserTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(PasswordTextBox, javax.swing.GroupLayout.PREFERRED_SIZE, 280, javax.swing.GroupLayout.PREFERRED_SIZE))
                     .addGap(10, 10, 10))
                 .addGroup(ConnectionDetailDialogLayout.createSequentialGroup()
                     .addGap(0, 0, Short.MAX_VALUE)
@@ -1197,8 +1197,7 @@ public class MainWindow extends javax.swing.JFrame {
            this.PortTextBox.setText(model.Port);
            this.UserTextBox.setText(model.User);
            this.PasswordTextBox.setText(model.Password);
-           this.ConnectionDetailDialog.setLocationRelativeTo(this);
-           ConnectionDetailDialog.setVisible(true);
+           showConnectionDetailDialog("Edit queue manager");
         }
     }
     
@@ -1982,7 +1981,16 @@ public class MainWindow extends javax.swing.JFrame {
     }
      
     private void addQueueManageMenuItemActionPerformed(java.awt.event.ActionEvent evt){
-        this.ConnectionDetailDialog.setLocationRelativeTo(this);
+        showConnectionDetailDialog("Add queue manager");
+    }
+
+    private void showConnectionDetailDialog(String title){
+        ConnectionDetailDialog.setTitle(title);
+        ConnectionDetailDialog.getRootPane().setDefaultButton(AddtButton);
+        ((javax.swing.JComponent) ConnectionDetailDialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 8));
+        // Size the dialog to its content: its fixed minimum size was made for the old look and feel
+        ConnectionDetailDialog.pack();
+        ConnectionDetailDialog.setLocationRelativeTo(this);
         ConnectionDetailDialog.setVisible(true);
     }
                 
