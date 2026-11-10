@@ -48,7 +48,6 @@ public class SelectObjectDialog<T extends Enum> extends DialogBase {
             Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex);
         };
         this.QueueManagerLabel.setText(queueManagerName);
-        this.SelectObjectTable.setShowGrid(false);
         this.OkButton.setEnabled(false);
         this.ProgressBar.setIndeterminate(true);
         this.ProgressBar.setVisible(false);

@@ -14,7 +14,7 @@ import MQApi.QueryModel.MQMessageListResult.MessageDetailModel;
 import MQApi.QueryModel.MQPubListResult.PubDetailModel;
 import MQApi.QueryModel.MQQueueListResult.QueueDetailModel;
 import MQApi.QueryModel.MQSubListResult.SubDetailModel;
-import UI.Misc.ProgressCellRender;
+import UI.Misc.DepthCellRender;
 import UI.Models.TableListObject;
 import java.awt.Component;
 import java.awt.Point;
@@ -80,7 +80,6 @@ public class TableHelper {
             ToggleContentTable(contentTable, false);
             contentTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             contentTable.setAutoCreateRowSorter(true);
-            contentTable.setShowGrid(false);
             alignHeadersLeading(contentTable);
         });
     }
@@ -166,10 +165,10 @@ public class TableHelper {
                 ToggleContentTable(contentTable, false);
             }
             alignHeadersLeading(contentTable);
-            resizeColumnWidth(contentTable);
             if(headerNames.contains("Queue depth status")){
-                contentTable.getColumn("Queue depth status").setCellRenderer(new ProgressCellRender());
+                contentTable.getColumn("Queue depth status").setCellRenderer(new DepthCellRender());
             }
+            resizeColumnWidth(contentTable);
             contentTable.getTableHeader().setReorderingAllowed(false); 
         });
     }
@@ -287,7 +286,8 @@ public class TableHelper {
                 width = Math.max(comp.getPreferredSize().width, width);
                 width = width > maxWidth ? maxWidth : width;
             }
-            columnModel.getColumn(column).setPreferredWidth(width);
+            // The grid lines take part of the column width: without this the longest values get truncated
+            columnModel.getColumn(column).setPreferredWidth(width + table.getIntercellSpacing().width + 2);
         }
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
     }
