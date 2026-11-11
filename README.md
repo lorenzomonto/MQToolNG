@@ -31,7 +31,6 @@ extract the zip and run `MQToolNG.exe`. Java and the IBM MQ client are included,
 - Maven 3.9+
 
 Dependencies (IBM MQ client 9.4, FlatLaf, Apache POI) are downloaded from Maven Central.
-The `bounce` XML editor kit is not published there and is kept in `lib/repo`.
 
 ## Build and run
 

@@ -20,7 +20,6 @@ import com.ibm.mq.headers.MQDLH;
 import com.ibm.mq.headers.MQDataException;
 import com.ibm.mq.headers.MQHeaderList;
 import com.ibm.mq.headers.MQRFH2;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.ComponentOrientation;
 import java.awt.Font;
@@ -39,8 +38,6 @@ import javax.swing.SpinnerNumberModel;
 import javax.swing.text.EditorKit;
 import javax.swing.text.NumberFormatter;
 //import xmleditorkit.XMLEditorKit;
-import org.bounce.text.xml.XMLEditorKit;
-import org.bounce.text.xml.XMLStyleConstants;
 
 /**
  *
@@ -53,7 +50,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     MQMessage message;
     String content = null;
     byte[] byteContent;
-    XMLEditorKit xmlEditorkit = new XMLEditorKit();
+    UI.Misc.XmlEditorKit xmlEditorkit = new UI.Misc.XmlEditorKit(true);
     EditorKit textEditorKit;
     Component component = this;
     boolean isNew;
@@ -91,11 +88,11 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
             Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex);
         }
         initComboBoxValue();
-        xmlEditorkit.setAutoIndentation(true);
-        xmlEditorkit.setTagCompletion(true);
-        xmlEditorkit.setStyle(XMLStyleConstants.ELEMENT_NAME, Color.BLUE, Font.PLAIN);
-        xmlEditorkit.setStyle(XMLStyleConstants.ATTRIBUTE_NAME, Color.MAGENTA, Font.BOLD);
-        this.textEditorKit = ContentEditorPane.getEditorKit();
+        // Payload in a monospaced font, the size of the other texts
+        Font text = javax.swing.UIManager.getFont("Label.font");
+        this.ContentEditorPane.setFont(new Font(com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont.FAMILY, Font.PLAIN,
+                text != null ? text.getSize() : 13));
+        this.textEditorKit = new UI.Misc.XmlEditorKit(false);
         this.ContentEditorPane.setEditorKitForContentType("Text", textEditorKit);
         this.ContentEditorPane.setEditorKitForContentType("XML", xmlEditorkit);
         this.QueueManagerLabel.setText(queueManagerName);

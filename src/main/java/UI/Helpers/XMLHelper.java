@@ -30,9 +30,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import org.w3c.dom.bootstrap.DOMImplementationRegistry;
-import org.w3c.dom.ls.DOMImplementationLS;
-import org.w3c.dom.ls.LSSerializer;
 import org.xml.sax.InputSource;
 
 /**
@@ -225,25 +222,13 @@ public class XMLHelper {
         }
     }
     
+    /**
+     * Indents an XML message for reading. Only the whitespace between tags changes: the declaration,
+     * namespaces, comments, the order of the attributes and the text stay as they are (a DOM
+     * serializer would drop or rewrite them).
+     */
     public static String XMLStringFormat(String xml) {
-
-        try {
-            final InputSource src = new InputSource(new StringReader(xml));
-            final Node document = SecureDocumentBuilderFactory().newDocumentBuilder().parse(src).getDocumentElement();
-            final Boolean keepDeclaration = Boolean.valueOf(xml.startsWith("<?xml"));
-
-            //System.setProperty(DOMImplementationRegistry.PROPERTY,"com.sun.org.apache.xerces.internal.dom.DOMImplementationSourceImpl");
-            final DOMImplementationRegistry registry = DOMImplementationRegistry.newInstance();
-            final DOMImplementationLS impl = (DOMImplementationLS) registry.getDOMImplementation("LS");
-            final LSSerializer writer = impl.createLSSerializer();
-
-            writer.getDomConfig().setParameter("format-pretty-print", Boolean.TRUE); // Set this to true if the output needs to be beautified.
-            writer.getDomConfig().setParameter("xml-declaration", keepDeclaration); // Set this to true if the declaration is needed to be outputted.
-            return writer.writeToString(document);
-        } catch (Exception e) {
-            return xml;
-            //throw new RuntimeException(e);
-        }
+        return UI.Misc.XmlSyntax.Indent(xml.trim(), "  ");
     }
     
     public static boolean IsXML(String xml) {

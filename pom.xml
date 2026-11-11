@@ -21,14 +21,6 @@
         <poi.version>5.5.1</poi.version>
     </properties>
 
-    <repositories>
-        <!-- Libraries not published on Maven Central (bounce XML editor kit) -->
-        <repository>
-            <id>project-local</id>
-            <url>file://${project.basedir}/lib/repo</url>
-        </repository>
-    </repositories>
-
     <dependencies>
         <dependency>
             <groupId>com.ibm.mq</groupId>
@@ -51,6 +43,11 @@
             <version>4.1</version>
         </dependency>
         <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf-fonts-jetbrains-mono</artifactId>
+            <version>2.304</version>
+        </dependency>
+        <dependency>
             <!-- Windows DPAPI, used to save connection passwords encrypted -->
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna-platform</artifactId>
@@ -60,11 +57,6 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi</artifactId>
             <version>${poi.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.bounce</groupId>
-            <artifactId>bounce</artifactId>
-            <version>0.19</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

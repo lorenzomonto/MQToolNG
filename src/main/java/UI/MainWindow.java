@@ -2268,6 +2268,7 @@ public class MainWindow extends javax.swing.JFrame {
     public static void main(String args[]) {      
         ExceptionHandler.registerExceptionHandler(Thread.currentThread().getId());
         FlatInterFont.install();
+        com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont.install();
         FlatLaf.setPreferredFontFamily(FlatInterFont.FAMILY);
         FlatLaf.registerCustomDefaultsSource("UI.themes");
         // FlatLaf title bar (with the menu bar inside it) on Windows and Linux; macOS keeps its native one
