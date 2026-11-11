@@ -90,7 +90,7 @@ public class DepthCellRender extends JComponent implements TableCellRenderer {
         FontMetrics fm = getFontMetrics(getFont());
         int width = hasValue
                 ? getFontMetrics(boldFont()).stringWidth(countText() + percentText()) + fm.stringWidth(maxText())
-                : fm.stringWidth("N/A");
+                : 0;
         return new Dimension(width + 2 * PADDING, fm.getHeight());
     }
 
@@ -105,10 +105,7 @@ public class DepthCellRender extends JComponent implements TableCellRenderer {
             int baseline = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
             int x = PADDING;
             if (!hasValue) {
-                g2.setFont(getFont());
-                g2.setColor(muted());
-                g2.drawString("N/A", x, baseline);
-                return;
+                return; // queues that hold no messages (alias, remote, model): empty cell
             }
             // Number of messages: bold, muted when the queue is empty
             Font countFont = current == 0 ? getFont() : boldFont();
