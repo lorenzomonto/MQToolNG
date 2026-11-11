@@ -2213,6 +2213,7 @@ public class MainWindow extends javax.swing.JFrame {
         selectedItem.setSelected(true);
         settingsModel.SkinName = name;
         XMLHelper.WriteSettingModelToXml(settingsModel);
+        UI.Helpers.SelectionStyle.Apply();
         FlatLaf.updateUI();
         // The list and the overview page take turns in the same scroll pane: the one not shown is
         // outside the window and would keep the previous theme

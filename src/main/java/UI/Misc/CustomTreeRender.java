@@ -55,7 +55,7 @@ public class CustomTreeRender extends DefaultTreeCellRenderer {
         else if(isSubFolder(value)){
             setIcon(iconManager.SubIcon());
         }
-        if(sel && tree.isFocusOwner()){
+        if(sel && tree.isFocusOwner() && strongSelection(tree)){
             // Colored icons would disappear on the accent colored selection: use the selection text color
             setIcon(IconManager.InColor(getIcon(), getForeground()));
         }
@@ -69,11 +69,15 @@ public class CustomTreeRender extends DefaultTreeCellRenderer {
             return;
         }
         // On the accent colored selection (focused tree) the secondary text uses the selection text color
-        Color muted = selected && tree.isFocusOwner() ? getForeground() : UIManager.getColor("Label.disabledForeground");
+        Color muted = selected && tree.isFocusOwner() && strongSelection(tree) ? getForeground() : UIManager.getColor("Label.disabledForeground");
         String hex = String.format("#%06x", muted.getRGB() & 0xFFFFFF);
         setText("<html>" + escape(nodeInfo.Name) + "&nbsp;&nbsp;<font color='" + hex + "'>"
                 + escape(nodeInfo.ConnectionDetail.Host + ":" + nodeInfo.ConnectionDetail.Port)
                 + (nodeInfo.ConnectionDetail.IsTlsEnabled() ? " · TLS" : "") + "</font></html>");
+    }
+
+    private static boolean strongSelection(JTree tree){
+        return UI.Helpers.SelectionStyle.IsStrong(UIManager.getColor("Tree.selectionForeground"), tree.getForeground());
     }
 
     private static String escape(String text){

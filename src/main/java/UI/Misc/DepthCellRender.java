@@ -74,8 +74,14 @@ public class DepthCellRender extends JComponent implements TableCellRenderer {
         return getFont().deriveFont(Font.BOLD);
     }
 
+    // On a strong selection color (accent background) the warning colors would not be readable
+    private boolean strongSelection() {
+        return selected && UI.Helpers.SelectionStyle.IsStrong(getForeground(), UIManager.getColor("Table.foreground"));
+    }
+
     private Color muted() {
-        if (selected) {
+        // On a strong selection color the gray would not be readable: a blend of the selection colors
+        if (strongSelection()) {
             Color fg = getForeground();
             Color bg = getBackground();
             return new Color((fg.getRed() * 3 + bg.getRed()) / 4, (fg.getGreen() * 3 + bg.getGreen()) / 4, (fg.getBlue() * 3 + bg.getBlue()) / 4);
@@ -121,7 +127,7 @@ public class DepthCellRender extends JComponent implements TableCellRenderer {
             // Fill percentage, only when the queue is filling up
             if (percent > WARNING_PERCENT) {
                 g2.setFont(boldFont());
-                g2.setColor(selected ? getForeground() : percent > CRITICAL_PERCENT ? CRITICAL : WARNING);
+                g2.setColor(strongSelection() ? getForeground() : percent > CRITICAL_PERCENT ? CRITICAL : WARNING);
                 g2.drawString(percentText(), x, baseline);
             }
         } finally {

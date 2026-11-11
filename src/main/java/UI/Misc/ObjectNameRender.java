@@ -6,6 +6,7 @@ import MQApi.Enums.QueueType;
 import MQApi.QueryModel.MQChannelListResult.ChannelDetailModel;
 import MQApi.QueryModel.MQQueueListResult.QueueDetailModel;
 import UI.Helpers.IconManager;
+import UI.Helpers.SelectionStyle;
 import UI.Models.TableListObject;
 import java.awt.Color;
 import java.awt.Component;
@@ -144,7 +145,8 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
         setIconTextGap(8);
         // On a selected row the icon takes the selection text color, so it stays visible;
         // channel icons are drawn in the text color of the table, the dot shows the status
-        Color selectionText = isSelected ? table.getSelectionForeground() : null;
+        Color selectionText = isSelected && SelectionStyle.IsStrong(table.getSelectionForeground(), table.getForeground())
+                ? table.getSelectionForeground() : null;
         if (status == null) {
             setIcon(IconManager.Named(kind.Icon, selectionText != null ? selectionText : kind.Color));
         } else {
