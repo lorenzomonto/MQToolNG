@@ -1110,6 +1110,10 @@ public class MainWindow extends javax.swing.JFrame {
     }
     
     private void initModernLook(){
+        // File > Import from MQ Explorer, after "Add queue manager"
+        JMenuItem importMenuItem = new JMenuItem("Import from MQ Explorer…");
+        importMenuItem.addActionListener(e -> importFromMQExplorer());
+        FileMenu.add(importMenuItem, FileMenu.getPopupMenu().getComponentIndex(AddQueueManagerMenuItem) + 1);
         this.setSize(1280, 800);
         this.setLocationRelativeTo(null);
         this.SplitPane.setDividerLocation(260);
@@ -2147,6 +2151,18 @@ public class MainWindow extends javax.swing.JFrame {
         SwingUtilities.updateComponentTreeUI(overviewPanel);
     }
      
+    private void importFromMQExplorer(){
+        java.util.List<ConnectionDetailModel> imported = UI.Dialogs.MQExplorerImportDialog.Show(this, ConnectionDetailModels);
+        if(imported.isEmpty()){
+            return;
+        }
+        for(ConnectionDetailModel connection : imported){
+            TreeHelper.AddQueueManagerNodeToTreeView(TreeView, connection);
+            ConnectionDetailModels.add(connection);
+        }
+        XMLHelper.WriteConnectionModelToXml(ConnectionDetailModels, SettingFilePath);
+    }
+
     private void addQueueManageMenuItemActionPerformed(java.awt.event.ActionEvent evt){
         tlsSettingsPanel.Load(null);
         showConnectionDetailDialog("Add queue manager");

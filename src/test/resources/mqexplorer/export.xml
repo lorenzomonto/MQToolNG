@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MQExplorer>
+<category IMemento.internal.id="com.ibm.mq.explorer.ui.category.sets">
+<subcategory IMemento.internal.id="com.ibm.mq.explorer.ui.category.sets.qmgrs">
+<Sets CollectionCount="0" FileVersion="1.0.1"/>
+</subcategory>
+</category>
+<category IMemento.internal.id="com.ibm.mq.explorer.ui.category.conn.info">
+<subcategory IMemento.internal.id="com.ibm.mq.explorer.ui.subcategory.handles.local">
+<QueueManagerHandles/>
+</subcategory>
+<subcategory IMemento.internal.id="com.ibm.mq.explorer.ui.subcategory.handles">
+<QueueManagerHandles>
+<QueueManagerHandle autoReconnect="0" channel="APP.SVRCONN" commandLevel="930" connName="mq1.example.com(1415)" connnectionType="2" expiryInterval="300" name="QMA" passwordMode="1" platform="3" refreshInterval="300" securityExitData="" securityExitLocation="" securityExitName="" sslCipherSuite="" sslFipsRequired="0" sslPeerName="" sslPersonalStore="" sslPersonalStorePw="" sslResetCount="0" sslTrustedStore="" sslTrustedStorePw="" uniqueId="QMA/mq1.example.com/1415/APP.SVRCONN" userIdState="1" userid="appuser" useridCompatibilityMode="0" uuid="QMA_2024-10-09_17.22.34" visible="1" waitInterval="30"/>
+<QueueManagerHandle autoReconnect="0" channel="SYSTEM.ADMIN.SVRCONN" commandLevel="920" connName="192.0.2.10(1418)" connnectionType="2" expiryInterval="300" name="QMB" passwordMode="1" platform="3" refreshInterval="300" securityExitData="" securityExitLocation="" securityExitName="" sslCipherSuite="" sslFipsRequired="0" sslPeerName="" sslPersonalStore="" sslPersonalStorePw="" sslResetCount="0" sslTrustedStore="" sslTrustedStorePw="" uniqueId="QMB/192.0.2.10/1418/SYSTEM.ADMIN.SVRCONN" userIdState="0" userid="ignored" useridCompatibilityMode="1" uuid="QMB_2022-11-08_14.43.31" visible="1" waitInterval="30"/>
+<QueueManagerHandle autoReconnect="0" channel="TLS.SVRCONN" commandLevel="940" connName="mq2.example.com(1420),mq3.example.com(1420)" connnectionType="2" expiryInterval="300" name="QMC" passwordMode="0" platform="3" refreshInterval="300" securityExitData="" securityExitLocation="" securityExitName="" sslCipherSuite="SSL_ECDHE_RSA_WITH_AES_256_GCM_SHA384" sslFipsRequired="0" sslPeerName="CN=QMC" sslPersonalStore="C:\certs\client.jks" sslPersonalStorePw="xxxxxx" sslResetCount="0" sslTrustedStore="C:\certs\trust.jks" sslTrustedStorePw="xxxxxx" uniqueId="QMC/mq2.example.com/1420/TLS.SVRCONN" userIdState="0" userid="" useridCompatibilityMode="1" uuid="QMC_2024-06-12_08.23.41" visible="1" waitInterval="30"/>
+<QueueManagerHandle autoReconnect="0" channel="SYSTEM.DEF.SVRCONN" commandLevel="920" connName="mq4.example.com" connnectionType="2" name="QMD" securityExitName="MyExit" sslCipherSuite="" userIdState="0" userid=""/>
+<QueueManagerHandle channel="" connName="" connnectionType="0" name="QMLOCAL"/>
+</QueueManagerHandles>
+</subcategory>
+</category>
+</MQExplorer>
