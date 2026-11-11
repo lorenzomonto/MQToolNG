@@ -163,7 +163,16 @@ public class XMLHelper {
                FileInputStream fileStream = new FileInputStream(file);
                Document document = db.parse(fileStream);
                NodeList nodes = document.getElementsByTagName("Skin");
-               model.SkinName = nodes.item(0).getTextContent();              
+               model.SkinName = nodes.item(0).getTextContent();
+               // Settings added in 1.3.0: missing in the files of older versions
+               NodeList check = document.getElementsByTagName("CheckForUpdates");
+               if(check.getLength() > 0){
+                   model.CheckForUpdates = !"false".equalsIgnoreCase(check.item(0).getTextContent().trim());
+               }
+               NodeList skipped = document.getElementsByTagName("SkippedVersion");
+               if(skipped.getLength() > 0){
+                   model.SkippedVersion = skipped.item(0).getTextContent().trim();
+               }
             }
 
          }catch(Exception ex){
@@ -182,6 +191,14 @@ public class XMLHelper {
             Element skinEle = document.createElement("Skin");
             skinEle.appendChild(document.createTextNode(model.SkinName));
             rootElement.appendChild(skinEle);
+            Element checkEle = document.createElement("CheckForUpdates");
+            checkEle.appendChild(document.createTextNode(Boolean.toString(model.CheckForUpdates)));
+            rootElement.appendChild(checkEle);
+            if(model.SkippedVersion != null && !model.SkippedVersion.isEmpty()){
+                Element skippedEle = document.createElement("SkippedVersion");
+                skippedEle.appendChild(document.createTextNode(model.SkippedVersion));
+                rootElement.appendChild(skippedEle);
+            }
             document.appendChild(rootElement);
             Transformer tr = SecureTransformerFactory().newTransformer();
             tr.transform(new DOMSource(document), new StreamResult(new FileOutputStream(settingPath)));

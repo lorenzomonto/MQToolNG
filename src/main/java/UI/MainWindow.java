@@ -125,6 +125,12 @@ public class MainWindow extends javax.swing.JFrame {
     private final javax.swing.JLabel ContentTitleLabel = new javax.swing.JLabel();
     private final UI.Dialogs.TlsSettingsPanel tlsSettingsPanel = new UI.Dialogs.TlsSettingsPanel();
     // Queue manager page, shown in place of the table when a queue manager is selected
+    // Shown at the top of the window when a new version is available
+    private final UI.Misc.UpdateBanner updateBanner = new UI.Misc.UpdateBanner(version -> {
+        settingsModel.SkippedVersion = version;
+        XMLHelper.WriteSettingModelToXml(settingsModel);
+    });
+    private final javax.swing.JCheckBoxMenuItem checkUpdatesMenuItem = new javax.swing.JCheckBoxMenuItem("Check for updates at startup");
     private final QueueManagerOverviewPanel overviewPanel = new QueueManagerOverviewPanel(new OverviewActions());
     private DefaultMutableTreeNode overviewNode;
     private QueueManagerOverview overviewData;
@@ -1107,6 +1113,56 @@ public class MainWindow extends javax.swing.JFrame {
         settingsModel = XMLHelper.ReadSettingsModelFromXml();
         UIManager.put("Tree.paintLines", Boolean.FALSE);
         changeSkins(settingsModel.SkinName);
+        checkUpdatesMenuItem.setSelected(settingsModel.CheckForUpdates);
+        if(settingsModel.CheckForUpdates){
+            checkForUpdates(false);
+        }
+    }
+
+    /**
+     * Asks GitHub for the latest release, in the background. At startup it is silent unless a newer
+     * version is found (and not skipped by the user); from the Help menu it always says the result.
+     */
+    private void checkForUpdates(boolean manual){
+        String current = UI.Helpers.UpdateCheck.CurrentVersion();
+        if(current == null){
+            if(manual){
+                JOptionPane.showMessageDialog(this, "The version of this build is not known (not started from the release).",
+                        "Check for updates", JOptionPane.INFORMATION_MESSAGE);
+            }
+            return;
+        }
+        new javax.swing.SwingWorker<UI.Helpers.UpdateCheck.Release, Void>(){
+            @Override
+            protected UI.Helpers.UpdateCheck.Release doInBackground() throws Exception {
+                return UI.Helpers.UpdateCheck.FetchLatest();
+            }
+
+            @Override
+            protected void done(){
+                UI.Helpers.UpdateCheck.Release latest;
+                try {
+                    latest = get();
+                } catch (Exception ex) {
+                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                    Logger.getLogger(MainWindow.class.getName()).log(Level.FINE, "Update check failed", cause);
+                    if(manual){
+                        JOptionPane.showMessageDialog(MainWindow.this, "Could not check for updates: " + cause.getMessage()
+                                + "\n\nThe releases are on " + UI.Helpers.UpdateCheck.RELEASES_PAGE,
+                                "Check for updates", JOptionPane.WARNING_MESSAGE);
+                    }
+                    return;
+                }
+                boolean newer = UI.Helpers.UpdateCheck.Compare(latest.Version, current) > 0;
+                if(newer && (manual || !latest.Version.equals(settingsModel.SkippedVersion))){
+                    updateBanner.Show(latest, current);
+                }
+                else if(manual){
+                    JOptionPane.showMessageDialog(MainWindow.this, "You are using the latest version (" + current + ").",
+                            "Check for updates", JOptionPane.INFORMATION_MESSAGE);
+                }
+            }
+        }.execute();
     }
     
     private void initModernLook(){
@@ -1114,6 +1170,20 @@ public class MainWindow extends javax.swing.JFrame {
         JMenuItem importMenuItem = new JMenuItem("Import from MQ Explorer…");
         importMenuItem.addActionListener(e -> importFromMQExplorer());
         FileMenu.add(importMenuItem, FileMenu.getPopupMenu().getComponentIndex(AddQueueManagerMenuItem) + 1);
+        // Update notice above the tree and the content
+        getContentPane().removeAll();
+        getContentPane().setLayout(new java.awt.BorderLayout());
+        getContentPane().add(updateBanner, java.awt.BorderLayout.NORTH);
+        getContentPane().add(SplitPane, java.awt.BorderLayout.CENTER);
+        jMenu1.addSeparator();
+        jMenu1.add(checkUpdatesMenuItem);
+        checkUpdatesMenuItem.addActionListener(e -> {
+            settingsModel.CheckForUpdates = checkUpdatesMenuItem.isSelected();
+            XMLHelper.WriteSettingModelToXml(settingsModel);
+        });
+        JMenuItem checkNowMenuItem = new JMenuItem("Check for updates…");
+        checkNowMenuItem.addActionListener(e -> checkForUpdates(true));
+        HelpMenu.add(checkNowMenuItem, 0);
         this.setSize(1280, 800);
         this.setLocationRelativeTo(null);
         this.SplitPane.setDividerLocation(260);
@@ -2266,6 +2336,8 @@ public class MainWindow extends javax.swing.JFrame {
     }
                 
     public static void main(String args[]) {      
+        // HTTP requests (update check) go through the proxy configured in the system
+        System.setProperty("java.net.useSystemProxies", "true");
         ExceptionHandler.registerExceptionHandler(Thread.currentThread().getId());
         FlatInterFont.install();
         com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont.install();
