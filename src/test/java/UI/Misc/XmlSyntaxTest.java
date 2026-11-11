@@ -40,6 +40,23 @@ class XmlSyntaxTest {
     }
 
     @Test
+    void compactUndoesIndent() {
+        String compact = "<?xml version=\"1.0\"?><!--c--><a x=\"1\"><b>Rossi  Figli</b><c/>"
+                + "<d><![CDATA[ x ]]></d><e></e><p>Hello <i>w</i> again</p></a>";
+        assertTrue(XmlSyntax.IsCompact(compact));
+        String indented = XmlSyntax.Indent(compact, "  ");
+        assertNotEquals(compact, indented);
+        assertFalse(XmlSyntax.IsCompact(indented));
+        assertEquals(compact, XmlSyntax.Compact(indented));
+    }
+
+    @Test
+    void editedIndentedXmlIsSentCompact() {
+        String edited = "<order>\n  <total>310.00</total>\n  <note>keep  these  spaces</note>\n</order>";
+        assertEquals("<order><total>310.00</total><note>keep  these  spaces</note></order>", XmlSyntax.Compact(edited));
+    }
+
+    @Test
     void kindsOfCharacters() {
         String xml = "<a id=\"1\">x&amp;</a><!--c-->";
         byte[] k = XmlSyntax.Kinds(xml);

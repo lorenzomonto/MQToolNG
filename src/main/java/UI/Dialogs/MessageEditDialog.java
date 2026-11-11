@@ -49,6 +49,8 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     String queueName;
     MQMessage message;
     String content = null;
+    // Payload as read from the queue, when it is compact XML shown indented: sent back compact
+    private String compactOriginal = null;
     byte[] byteContent;
     UI.Misc.XmlEditorKit xmlEditorkit = new UI.Misc.XmlEditorKit(true);
     EditorKit textEditorKit;
@@ -192,8 +194,14 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         }
 
        
+        compactOriginal = null;
         if(XMLHelper.IsXML(content)){
-            content = XMLHelper.XMLStringFormat(content);
+            // Compact XML is indented for reading and sent back compact; XML that already has its
+            // own layout is shown as it is
+            if(UI.Misc.XmlSyntax.IsCompact(content)){
+                compactOriginal = content;
+                content = XMLHelper.XMLStringFormat(content);
+            }
             ContentTypeSelectComboBox.setSelectedIndex(1);
             this.ContentEditorPane.setContentType("XML");
         }
@@ -317,13 +325,27 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
                 message.clearMessage();
                 setMessageMQMD(message);
             }
-            message.writeString(ContentEditorPane.getText());
+            message.writeString(payloadToSend(ContentEditorPane.getText()));
             message.format = "MQSTR";
         } catch (IOException ex) {
             Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
+    /**
+     * The payload in its original layout: a compact XML message that is shown indented is sent
+     * back compact (unchanged: exactly the original; edited: without the added line breaks).
+     */
+    private String payloadToSend(String text){
+        if(compactOriginal == null){
+            return text;
+        }
+        if(text.equals(content)){
+            return compactOriginal;
+        }
+        return UI.Misc.XmlSyntax.Compact(text.trim());
+    }
+
     private void startLoading(){
         this.UpdateButton.setEnabled(false);
         this.ProgressBar.setVisible(true);        

@@ -115,6 +115,24 @@ public final class XmlSyntax {
      * of the elements stay exactly as they are.
      */
     public static String Indent(String xml, String unit) {
+        return layout(xml, unit);
+    }
+
+    /**
+     * The opposite of Indent: removes the whitespace that Indent puts between tags, so an indented
+     * compact message goes back to its original form. Whitespace inside text and CDATA is kept.
+     */
+    public static String Compact(String xml) {
+        return layout(xml, null);
+    }
+
+    /** True when the XML has no whitespace between tags (all on one line, as applications usually send it). */
+    public static boolean IsCompact(String xml) {
+        return Compact(xml).equals(xml);
+    }
+
+    /** unit = indentation of one level; null = no line breaks at all. */
+    private static String layout(String xml, String unit) {
         StringBuilder out = new StringBuilder(xml.length() + xml.length() / 4);
         int depth = 0;
         int i = 0;
@@ -145,7 +163,9 @@ public final class XmlSyntax {
             if (previous == null) {
                 out.append(gap.isBlank() ? "" : gap);
             } else if (gap.isBlank() && !emptyElement && !nextToText) {
-                out.append('\n').append(unit.repeat(depth));
+                if (unit != null) {
+                    out.append('\n').append(unit.repeat(depth));
+                }
             } else {
                 out.append(gap);
             }
