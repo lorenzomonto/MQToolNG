@@ -34,7 +34,12 @@ public class MQConnection {
             properties.put(MQConstants.CHANNEL_PROPERTY, connectionDetail.Channel);
             properties.put("transport", "MQSeries");
             //properties.put(MQConstants.APPNAME_PROPERTY, "MQ Admin Tool");
-            if(connectionDetail.User != null && !connectionDetail.User.isEmpty()){
+            if(connectionDetail.User != null && !connectionDetail.User.isEmpty() && connectionDetail.IsNoPassword()){
+                // Only the user id is sent, as for a connection without user: the queue manager
+                // (CHCKCLNT OPTIONAL or NONE, channel authentication rules) decides what it is allowed
+                properties.put(MQConstants.USER_ID_PROPERTY, connectionDetail.User);
+            }
+            else if(connectionDetail.User != null && !connectionDetail.User.isEmpty()){
                 // The password is either saved with the connection or typed by the user for this session
                 String password = SessionPasswords.Resolve(connectionDetail);
                 if(password == null){

@@ -40,9 +40,9 @@ public class SessionPasswords {
         saveConnections = saver;
     }
 
-    /** True when the connection authenticates with a user and has no saved password. */
+    /** True when the connection authenticates with a user and has no saved password, and a password is required. */
     public static boolean NeedsPassword(ConnectionDetailModel connectionDetail) {
-        return isSet(connectionDetail.User) && !isSet(connectionDetail.Password);
+        return isSet(connectionDetail.User) && !connectionDetail.IsNoPassword() && !isSet(connectionDetail.Password);
     }
 
     /** Asks for the password and keeps it for this session. Returns false when the user cancels. */

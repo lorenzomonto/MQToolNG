@@ -124,6 +124,8 @@ public class MainWindow extends javax.swing.JFrame {
     private final Set<DefaultMutableTreeNode> connectingNodes = new HashSet<DefaultMutableTreeNode>();
     private final javax.swing.JLabel ContentTitleLabel = new javax.swing.JLabel();
     private final UI.Dialogs.TlsSettingsPanel tlsSettingsPanel = new UI.Dialogs.TlsSettingsPanel();
+    // For queue managers that do not check the password of the user: it is never asked
+    private final javax.swing.JCheckBox NoPasswordCheckBox = new javax.swing.JCheckBox("No password: send only the user");
     // Queue manager page, shown in place of the table when a queue manager is selected
     // Shown at the top of the window when a new version is available
     private final UI.Misc.UpdateBanner updateBanner = new UI.Misc.UpdateBanner(version -> {
@@ -1378,7 +1380,7 @@ public class MainWindow extends javax.swing.JFrame {
         }
         connection.QueueManager = this.QueueManagerTextBox.getText();  
         connection.User = this.UserTextBox.getText();
-        connection.Password = new String(this.PasswordTextBox.getPassword());
+        savePassword(connection);
         tlsSettingsPanel.Save(connection);
         return connection;
     }    
@@ -1397,6 +1399,7 @@ public class MainWindow extends javax.swing.JFrame {
            this.PortTextBox.setText(model.Port);
            this.UserTextBox.setText(model.User);
            this.PasswordTextBox.setText(model.Password);
+           setNoPassword(model.IsNoPassword());
            tlsSettingsPanel.Load(model);
            showConnectionDetailDialog("Edit queue manager");
         }
@@ -2080,7 +2083,7 @@ public class MainWindow extends javax.swing.JFrame {
             model.Port = this.PortTextBox.getText();
             model.QueueManager = this.QueueManagerTextBox.getText();
             model.User = this.UserTextBox.getText();
-            model.Password = new String(this.PasswordTextBox.getPassword());
+            savePassword(model);
             tlsSettingsPanel.Save(model);
             TreeHelper.RefreshTreeView(TreeView, model);
         }
@@ -2282,8 +2285,11 @@ public class MainWindow extends javax.swing.JFrame {
 
     private void setupConnectionDetailDialog(){
         // Connection fields and TLS section in the same two columns (labels, fields), buttons below
-        javax.swing.JLabel[] labels = {jLabel1, jLabel2, jLabel3, jLabel4, jLabel6, jLabel7};
-        javax.swing.JComponent[] inputs = {HostTextBox, QueueManagerTextBox, ChannelTextBox, PortTextBox, UserTextBox, PasswordTextBox};
+        javax.swing.JLabel[] labels = {jLabel1, jLabel2, jLabel3, jLabel4, jLabel6, jLabel7, new javax.swing.JLabel()};
+        javax.swing.JComponent[] inputs = {HostTextBox, QueueManagerTextBox, ChannelTextBox, PortTextBox, UserTextBox, PasswordTextBox, NoPasswordCheckBox};
+        NoPasswordCheckBox.setToolTipText("<html>For queue managers that do not check the password (CHCKCLNT OPTIONAL or NONE):<br>"
+                + "the user is sent without password and no password is asked when connecting</html>");
+        NoPasswordCheckBox.addActionListener(e -> setNoPassword(NoPasswordCheckBox.isSelected()));
         int labelWidth = tlsSettingsPanel.LabelWidth();
         for(javax.swing.JLabel label : labels){
             label.setPreferredSize(null);
@@ -2325,11 +2331,25 @@ public class MainWindow extends javax.swing.JFrame {
                 javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
     }
 
+    private void setNoPassword(boolean noPassword){
+        NoPasswordCheckBox.setSelected(noPassword);
+        PasswordTextBox.setEnabled(!noPassword);
+        if(noPassword){
+            PasswordTextBox.setText("");
+        }
+        PasswordTextBox.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, noPassword ? "Not needed"
+                : SecurePasswordStore.IsAvailable() ? "Saved encrypted, or empty to be asked"
+                : "Not saved; empty to be asked when connecting");
+    }
+
+    private void savePassword(ConnectionDetailModel connection){
+        connection.NoPassword = NoPasswordCheckBox.isSelected() ? "true" : "false";
+        connection.Password = NoPasswordCheckBox.isSelected() ? "" : new String(this.PasswordTextBox.getPassword());
+    }
+
     private void showConnectionDetailDialog(String title){
         ConnectionDetailDialog.setTitle(title);
-        PasswordTextBox.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, SecurePasswordStore.IsAvailable()
-                ? "Saved encrypted, or empty to be asked"
-                : "Not saved; empty to be asked when connecting");
+        setNoPassword(NoPasswordCheckBox.isSelected());
         // Size the dialog to its content: its fixed minimum size was made for the old look and feel
         ConnectionDetailDialog.pack();
         ConnectionDetailDialog.setLocationRelativeTo(this);

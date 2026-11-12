@@ -17,6 +17,8 @@ public class ConnectionDetailModel {
     
     public String User;
     public String Password;
+    /** "true" when the user is sent without a password (the queue manager does not check it): never asked. */
+    public String NoPassword;
 
     // TLS (saved in ConnectionSettings.xml; the passwords encrypted, see XMLHelper)
     /** "true" to encrypt the connection; otherwise the connection is not encrypted. */
@@ -35,13 +37,17 @@ public class ConnectionDetailModel {
     public boolean IsTlsEnabled() {
         return "true".equalsIgnoreCase(UseTls);
     }
+
+    public boolean IsNoPassword() {
+        return "true".equalsIgnoreCase(NoPassword);
+    }
  
     public String toString() {
         return "<html>\nhost: " + Host + 
                 "<br/>\nqueue manager: " + QueueManager + 
                 "<br/>\nchannel: " + Channel + 
                 "<br/>\nport: " + Port + 
-                "<br/>\nuser: " + User + 
+                "<br/>\nuser: " + User + (IsNoPassword() && User != null && !User.isEmpty() ? " (no password)" : "") +
                 "<br/>\nTLS: " + (IsTlsEnabled() ? "on" : "off (not encrypted)") +
                 "</html>";
     }
