@@ -1112,6 +1112,68 @@ public class MQUtility {
         }
     }
 
+    /**
+     * Offset, hexadecimal and ASCII of the bytes, 16 per line, like a hex editor; at most max bytes
+     * (a line at the end says how many are left out).
+     */
+    public static String HexDump(byte[] bytes, int max){
+        int count = Math.min(bytes.length, max);
+        StringBuilder dump = new StringBuilder(count * 5);
+        for(int offset = 0; offset < count; offset += 16){
+            dump.append(String.format("%08X  ", offset));
+            StringBuilder ascii = new StringBuilder(16);
+            for(int i = 0; i < 16; i++){
+                if(offset + i < count){
+                    int value = bytes[offset + i] & 0xFF;
+                    dump.append(String.format("%02X ", value));
+                    ascii.append(value >= 0x20 && value < 0x7F ? (char) value : '.');
+                }
+                else{
+                    dump.append("   ");
+                }
+                if(i == 7){
+                    dump.append(' ');
+                }
+            }
+            dump.append(" |").append(ascii).append("|\n");
+        }
+        if(bytes.length > count){
+            dump.append("... ").append(bytes.length - count).append(" more bytes\n");
+        }
+        return dump.toString();
+    }
+
+    /** False when the text has only spaces, control characters (e.g. binary zeros) or undecodable bytes. */
+    public static boolean HasVisibleText(String text){
+        return text != null && text.codePoints().anyMatch(c -> !Character.isWhitespace(c) && !Character.isISOControl(c)
+                && c != 0xFFFD && Character.getType(c) != Character.FORMAT);
+    }
+
+    /**
+     * True for data that is not text: nothing visible, or control characters other than tab and line
+     * breaks (binary zeros, packed numbers...). It is better shown as bytes than as text.
+     */
+    public static boolean IsBinary(String text){
+        return !HasVisibleText(text) || text.chars().anyMatch(c -> Character.isISOControl(c) && c != '\t' && c != '\n' && c != '\r');
+    }
+
+    /** The data column of the message list: the start of the text, or of the bytes for binary data. */
+    private static String listPreview(MQMessage message){
+        String text = GetMessageStringContent(message, 4096);
+        if(IsBinary(text)){
+            ReadHeaders(message);
+            try{
+                byte[] bytes = new byte[Math.min(24, message.getDataLength())];
+                message.readFully(bytes);
+                return bytes.length == 0 ? "" : "hex " + BytesToHex(bytes);
+            }catch(IOException ex){
+                return "";
+            }
+        }
+        String start = text.stripLeading();
+        return start.length() > messageListDataLength ? start.substring(0, messageListDataLength) : start;
+    }
+
     /** The first bytes of the message in hexadecimal, to show what it contains when it cannot be read. */
     public static String FirstBytes(MQMessage message, int count){
         try{
@@ -1240,7 +1302,7 @@ public class MQUtility {
         model.AccountToken = BytesToHex(message.accountingToken);
         model.MessageIdString = BytesToHex(message.messageId);
         model.Offset = message.offset;
-        model.MessageData = GetMessageStringContent(message, messageListDataLength);
+        model.MessageData = listPreview(message);
         //model.MessageFullData = GetMessageStringContent(message, null);
         model.GroupIDString = BytesToHex(message.groupId);
         model.BackoutCount = message.backoutCount;

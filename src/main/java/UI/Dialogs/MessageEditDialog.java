@@ -49,6 +49,10 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     String content = null;
     // Payload as read from the queue, when it is compact XML shown indented: sent back compact
     private String compactOriginal = null;
+    // Whole message (headers included) in hexadecimal, for the "Hex" view
+    private String hexDump = null;
+    private static final int HEX_INDEX = 2;
+    private static final int HEX_MAX_BYTES = 1024 * 1024;
     byte[] byteContent;
     UI.Misc.XmlEditorKit xmlEditorkit = new UI.Misc.XmlEditorKit(true);
     EditorKit textEditorKit;
@@ -170,6 +174,10 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         }
         try {
             message.seek(0);
+            byte[] bytes = new byte[message.getMessageLength()];
+            message.readFully(bytes);
+            hexDump = MQUtility.HexDump(bytes, HEX_MAX_BYTES);
+            message.seek(0);
         } catch (IOException ex) {
             Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -196,9 +204,26 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
             }
             showContent(1, "XML");
         }
+        else if(MQUtility.IsBinary(content) && hexDump != null && !hexDump.isEmpty()){
+            // Binary data, or no data after the headers: the bytes of the whole message
+            showContent(HEX_INDEX, "Text");
+        }
         else{
             showContent(0, "Text");
         }
+    }
+
+    private boolean isHexView(){
+        return ContentTypeSelectComboBox.getSelectedIndex() == HEX_INDEX;
+    }
+
+    /** The hex view is read only: the payload is edited as text. */
+    private void showHex(boolean hex){
+        this.ContentEditorPane.setContentType("Text");
+        this.ContentEditorPane.setText(hex ? hexDump : content);
+        this.ContentEditorPane.setEditable(!hex);
+        this.ContentEditorPane.setCaretPosition(0);
+        this.UpdateButton.setEnabled(!hex);
     }
 
     // Says why the data may include header bytes, with the first bytes of the message to find out more
@@ -218,6 +243,9 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     private void showContent(int typeIndex, String contentType){
         if(ContentTypeSelectComboBox.getSelectedIndex() != typeIndex){
             ContentTypeSelectComboBox.setSelectedIndex(typeIndex);
+        }
+        else if(typeIndex == HEX_INDEX){
+            showHex(true);
         }
         else{
             this.ContentEditorPane.setContentType(contentType);
@@ -370,7 +398,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     }
     
     private void finishLoading(boolean fireEvent){
-        this.UpdateButton.setEnabled(true);
+        this.UpdateButton.setEnabled(!isHexView());
         this.ProgressBar.setVisible(false);
         this.StatusLabel.setVisible(false);
         this.KeepPositionCheckBox.setEnabled(true);
@@ -572,7 +600,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         ContentEditorToolbar.setRollover(true);
         ContentEditorToolbar.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT);
 
-        ContentTypeSelectComboBox.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Text", "XML" }));
+        ContentTypeSelectComboBox.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Text", "XML", "Hex" }));
         ContentTypeSelectComboBox.setMaximumSize(new java.awt.Dimension(70, 20));
         ContentTypeSelectComboBox.setMinimumSize(new java.awt.Dimension(70, 20));
         ContentTypeSelectComboBox.setPreferredSize(new java.awt.Dimension(70, 25));
@@ -1167,15 +1195,18 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
 
     private void ContentTypeSelectComboBoxItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_ContentTypeSelectComboBoxItemStateChanged
         if(evt.getStateChange() == ItemEvent.SELECTED){
-            if(ContentTypeSelectComboBox.getSelectedItem().toString() == "XML"){
+            if(isHexView()){
+                showHex(true);
+            }
+            else if(ContentTypeSelectComboBox.getSelectedItem().toString() == "XML"){
 //                content = this.ContentEditorPane.getText();
+                showHex(false);
                 this.ContentEditorPane.setContentType("XML");
                 this.ContentEditorPane.setText(content);   
             }
             else if(ContentTypeSelectComboBox.getSelectedItem().toString() == "Text"){
 //                content = this.ContentEditorPane.getText();
-                this.ContentEditorPane.setContentType("Text");
-                this.ContentEditorPane.setText(content);            
+                showHex(false);
             }
             else{
     //            this.ContentEditorPane.setContentType("Text");
