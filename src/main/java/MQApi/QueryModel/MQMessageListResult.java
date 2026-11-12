@@ -27,6 +27,8 @@ public class MQMessageListResult extends MQQueryResultBase{
     public class MessageDetailModel{
         public byte[] MessageId;
         public byte[] CorrelationId;
+        /** Message token, to find this message again (see MQMessageIdModel.MessageToken). */
+        public byte[] MessageToken;
         @MQObjectListtAnnotation(DisplayName = "Position", MQConstant = 0, VarType = VariableType.Text, QueryType = QueryType.MessageDetail, TrueFalseDisplayValue = {""})
         public String Position;
         @MQObjectListtAnnotation(DisplayName = "Message data", MQConstant = 0, VarType = VariableType.Text, QueryType = QueryType.MessageDetail, TrueFalseDisplayValue = {""})

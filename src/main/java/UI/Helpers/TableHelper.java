@@ -140,6 +140,7 @@ public class TableHelper {
                                 obj.MessageIdInfo = new MQMessageIdModel();
                                 obj.MessageIdInfo.MessageId = message.MessageId;
                                 obj.MessageIdInfo.CorrelationdId = message.CorrelationId;
+                                obj.MessageIdInfo.MessageToken = message.MessageToken;
                                 obj.MessageIdInfo.position = Integer.parseInt(String.valueOf(message.Position));
                             }
                             setType(obj, data);

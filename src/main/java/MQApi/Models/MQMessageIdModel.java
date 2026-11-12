@@ -13,4 +13,9 @@ public class MQMessageIdModel {
     public byte[] MessageId;
     public byte[] CorrelationdId;
     public Integer position;
+    /**
+     * Token the queue manager gives each message on the queue: unique also when applications put
+     * several messages with the same message and correlation id. Null when not known.
+     */
+    public byte[] MessageToken;
 }

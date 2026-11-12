@@ -288,10 +288,10 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
                     updateMessageObject();
                     if(isNew == false){
                         if(KeepPositionCheckBox.isSelected()){
-                            MQUtility.UpdateMessageToSamePosition(queueManager, queueName, message);
+                            MQUtility.UpdateMessageToSamePosition(queueManager, queueName, message, messageId);
                         }
                         else{
-                            MQUtility.UpdateMessage(queueManager, queueName, message);
+                            MQUtility.UpdateMessage(queueManager, queueName, message, messageId);
                         }
                     }
                     else{

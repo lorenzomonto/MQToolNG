@@ -93,21 +93,18 @@ public class MQUtility {
     public static MQMessage GetMessage(MQQueueManager queueManager, String queueName, MQMessageIdModel messageIdModel, boolean matchPosition, boolean asEBCDIC) throws MQException{
         MQQueue queue = null;
         MQMessage message = new MQMessage();
-        message.messageId = messageIdModel.MessageId;
-        message.correlationId = messageIdModel.CorrelationdId;
         if(asEBCDIC){
             message.characterSet = 500;
             message.encoding = 785;
         }
         MQGetMessageOptions options = new MQGetMessageOptions();
         options.options = asEBCDIC ? CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_CONVERT : CMQC.MQGMO_BROWSE_NEXT;
-        options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
-        try {                 
+        try {
             queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE);
             if(matchPosition){
                 setQueueCursor(queue, messageIdModel.position - 1);
             }
-            queue.get(message, options);
+            getSelectedMessage(queue, message, options, messageIdModel, null);
 
         } catch (MQException ex) {
             LogWriter.WriteToLog("MQUtility", "GetMessage", ex);
@@ -138,13 +135,11 @@ public class MQUtility {
         return message;                
     }
     
-    public static void UpdateMessage(MQQueueManager queueManager, String queueName, MQMessage message) throws MQException{
+    /** Replaces the message read with oldId (its token, when known, removes exactly that message) with the edited one. */
+    public static void UpdateMessage(MQQueueManager queueManager, String queueName, MQMessage message, MQMessageIdModel oldId) throws MQException{
         MQQueue queue = null;
         MQPutMessageOptions options = new MQPutMessageOptions();
         options.options = CMQC.MQPMO_SET_ALL_CONTEXT;
-        MQMessageIdModel oldId = new MQMessageIdModel();
-        oldId.CorrelationdId = message.correlationId;
-        oldId.MessageId = message.messageId;
         try{
             ComsumeSelectedMessages(queueManager, queueName, oldId);
         }
@@ -164,14 +159,11 @@ public class MQUtility {
         closeQueue(queue);              
     }
 
-    public static void UpdateMessageToSamePosition(MQQueueManager queueManager, String queueName, MQMessage message) throws MQException, Exception{
-        MQMessageIdModel id = new MQMessageIdModel();
-        id.CorrelationdId = message.correlationId;
-        id.MessageId = message.messageId;
+    public static void UpdateMessageToSamePosition(MQQueueManager queueManager, String queueName, MQMessage message, MQMessageIdModel id) throws MQException, Exception{
         String fileName = "UpdateTemp.msg";
         BackupAndRemoveMessageFromSelectedPosition(queueManager, queueName, fileName, id);
         try{
-            UpdateMessage(queueManager, queueName, message);
+            UpdateMessage(queueManager, queueName, message, id);
         }
         catch(MQException ex){
             LogWriter.WriteToLog("MQUtility", "UpdateMessageToSamePosition", ex);
@@ -203,10 +195,8 @@ public class MQUtility {
             options.options = CMQC.MQGMO_BROWSE_NEXT;
             options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
             if(fromId != null){
-                message.messageId = fromId.MessageId;
-                message.correlationId = fromId.CorrelationdId;
                 try{
-                    queue.get(message, options);
+                    getSelectedMessage(queue, message, options, fromId, null);
                 }
                 catch(MQException ex){
                     if(!setQueueCursor(queue, fromPosition)){
@@ -231,6 +221,7 @@ public class MQUtility {
                 }
                 index--;
                 MessageDetailModel model = turnToMessageModel(result, message, position);
+                model.MessageToken = options.msgToken != null ? options.msgToken.clone() : null;
                 result.DataModels.add(model);
                 position ++;
             }            
@@ -490,17 +481,14 @@ public class MQUtility {
             MQGetMessageOptions options = new MQGetMessageOptions();
             for(MQMessageIdModel id : ids){
                 options.options = CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
-                options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;                
-                message.messageId = id.MessageId;
-                message.correlationId = id.CorrelationdId;
-                
+
                 if(progressBar != null){
                     int value = i*100/ids.size();
                     progressBar.setValue(value);
                 }
                 i++;
                 try{
-                    queue.get(message, options, 1);
+                    getSelectedMessage(queue, message, options, id, 1);
                 }
                 catch(MQException ex){
                     if(ex.getReason() == MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED || ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
@@ -614,12 +602,9 @@ public class MQUtility {
                         int i = 1;
                         for(MQMessageIdModel id : ids){
                             MQMessage message = new MQMessage();
-                            message.messageId = id.MessageId;
-                            message.correlationId = id.CorrelationdId;
                             MQGetMessageOptions options = new MQGetMessageOptions();
                             options.options = CMQC.MQGMO_BROWSE_NEXT;
-                            options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
-                            queue.get(message, options);   
+                            getSelectedMessage(queue, message, options, id, null);
                             if(removeDLH){
                                 message = RemoveMQDLH(message);
                             }
@@ -716,12 +701,9 @@ public class MQUtility {
                         int i = 1;
                         for(MQMessageIdModel id : ids){
                             MQMessage message = new MQMessage();
-                            message.messageId = id.MessageId;
-                            message.correlationId = id.CorrelationdId;
                             MQGetMessageOptions options = new MQGetMessageOptions();
                             options.options = CMQC.MQGMO_BROWSE_NEXT;
-                            options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
-                            queue.get(message, options);   
+                            getSelectedMessage(queue, message, options, id, null);
                             out.write("Message position : " + i);
                             out.write("\r\n"); 
                             out.write("\r\n");
@@ -1276,12 +1258,9 @@ public class MQUtility {
                 objectOutputStream.writeObject(queueName);
                 objectOutputStream.writeInt(queueDepth);
                 MQMessage message = new MQMessage();
-                message.messageId = id.MessageId;
-                message.correlationId = id.CorrelationdId;
                 MQGetMessageOptions options = new MQGetMessageOptions();
                 options.options = CMQC.MQGMO_BROWSE_NEXT;
-                options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;                
-                queue.get(message, options);
+                getSelectedMessage(queue, message, options, id, null);
                 ArrayList<MQMessageIdModel> idsToRemove = new ArrayList<MQMessageIdModel>();
                 while(true){
                     try{
@@ -1293,6 +1272,7 @@ public class MQUtility {
                         MQMessageIdModel deleteMsgId = new MQMessageIdModel();
                         deleteMsgId.MessageId = message.messageId;
                         deleteMsgId.CorrelationdId = message.correlationId;
+                        deleteMsgId.MessageToken = options.msgToken.clone();
                         idsToRemove.add(deleteMsgId);
                     }
                     catch(MQException ex){
@@ -1353,6 +1333,57 @@ public class MQUtility {
         }
     }
        
+    /**
+     * Gets or browses the message of a list row. Its message token finds exactly that message, also when
+     * several messages have the same message and correlation id (applications that set the message id
+     * themselves). Without a token, or when the queue manager does not accept it, the first message with
+     * the two ids is used. Afterwards the options match the ids of the message object, as before.
+     */
+    private static void getSelectedMessage(MQQueue queue, MQMessage message, MQGetMessageOptions options, MQMessageIdModel id, Integer maxSize) throws MQException{
+        int getOptions = options.options;
+        try{
+            if(id.MessageToken != null){
+                message.messageId = new byte[CMQC.MQ_MSG_ID_LENGTH];
+                message.correlationId = new byte[CMQC.MQ_CORREL_ID_LENGTH];
+                options.matchOptions = MQConstants.MQMO_MATCH_MSG_TOKEN;
+                options.msgToken = id.MessageToken.clone();
+                if((getOptions & CMQC.MQGMO_BROWSE_NEXT) != 0){
+                    // The token finds the message wherever the browse cursor is
+                    options.options = (getOptions & ~CMQC.MQGMO_BROWSE_NEXT) | CMQC.MQGMO_BROWSE_FIRST;
+                }
+                try{
+                    getWithSize(queue, message, options, maxSize);
+                    return;
+                }
+                catch(MQException ex){
+                    if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE || ex.getReason() == MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                        throw ex;
+                    }
+                    LogWriter.WriteToLog("MQUtility", "getSelectedMessage (token not accepted, using the ids)", ex);
+                    options.options = getOptions;
+                }
+            }
+            message.messageId = id.MessageId;
+            message.correlationId = id.CorrelationdId;
+            options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
+            getWithSize(queue, message, options, maxSize);
+        }
+        finally{
+            options.options = getOptions;
+            options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
+            options.msgToken = new byte[CMQC.MQ_MSG_TOKEN_LENGTH];
+        }
+    }
+
+    private static void getWithSize(MQQueue queue, MQMessage message, MQGetMessageOptions options, Integer maxSize) throws MQException{
+        if(maxSize != null){
+            queue.get(message, options, maxSize);
+        }
+        else{
+            queue.get(message, options);
+        }
+    }
+
     private static boolean setQueueCursor(MQQueue queue, int position){
         MQMessage message = new MQMessage();
         MQGetMessageOptions options = new MQGetMessageOptions();
