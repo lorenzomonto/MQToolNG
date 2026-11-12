@@ -52,7 +52,7 @@ public class TreeHelper {
         DefaultTreeModel model = (DefaultTreeModel)TreeView.getModel();
         DefaultMutableTreeNode root = (DefaultMutableTreeNode)model.getRoot();
         DefaultMutableTreeNode queueManagerFolderNode = (DefaultMutableTreeNode)root.getFirstChild();
-        queueManagerFolderNode.add(node);
+        queueManagerFolderNode.insert(node, sortedIndex(queueManagerFolderNode, connectionDetail.QueueManager));
         model.reload(root);
         TreeView.setSelectionPath(new TreePath(node.getPath()));
     }
@@ -179,8 +179,25 @@ public class TreeHelper {
         TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
         nodeObject.Name = connectionDetail.QueueManager;
         nodeObject.ConnectionDetail = connectionDetail;
+        // The name may have changed: move the node to its alphabetical place
+        DefaultMutableTreeNode parent = (DefaultMutableTreeNode)node.getParent();
+        parent.remove(node);
+        parent.insert(node, sortedIndex(parent, connectionDetail.QueueManager));
         RepoadTree(TreeView);
         TreeView.setSelectionPath(new TreePath(node.getPath()));
+    }
+    
+    // Position of a queue manager in the folder, so the list stays in alphabetical order (ignoring case)
+    private static int sortedIndex(DefaultMutableTreeNode folder, String name){
+        int index = 0;
+        while(index < folder.getChildCount()){
+            TreeNodeObject other = (TreeNodeObject)((DefaultMutableTreeNode)folder.getChildAt(index)).getUserObject();
+            if(String.CASE_INSENSITIVE_ORDER.compare(String.valueOf(other.Name), String.valueOf(name)) > 0){
+                break;
+            }
+            index++;
+        }
+        return index;
     }
     
     private static void RepoadTree(JTree TreeView){
