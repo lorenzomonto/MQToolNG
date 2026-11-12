@@ -38,6 +38,11 @@ public class QueueManagerOverview {
         public int Percent() {
             return Max > 0 ? (int) Math.round(Current * 100.0 / Max) : 0;
         }
+
+        /** How full the queue is, from 0 to 1. */
+        public double Fill() {
+            return Max > 0 ? Math.min(1.0, Current / (double) Max) : 0;
+        }
     }
 
     public static class Listener {
@@ -91,6 +96,7 @@ public class QueueManagerOverview {
 
     // DefinitionType text of temporary dynamic queues (see QueueDetailModel)
     private static final String TEMPORARY_DYNAMIC = "Dynamically defined temporary queue";
+    private static final int TOP_QUEUES = 6;
 
     public static QueueManagerOverview Load(MQQueueManager queueManager) {
         QueueManagerOverview overview = new QueueManagerOverview();
@@ -295,10 +301,12 @@ public class QueueManagerOverview {
             }
         }
         LocalQueues = locals;
+        // Fullest first: 10 messages in a queue that holds 10 matter more than 30 in one that holds 5000
         ApplicationQueues.stream()
                 .filter(q -> q.Current > 0)
-                .sorted(Comparator.comparingInt((QueueDepth q) -> q.Current).reversed())
-                .limit(5)
+                .sorted(Comparator.comparingDouble(QueueDepth::Fill).reversed()
+                        .thenComparing(Comparator.comparingInt((QueueDepth q) -> q.Current).reversed()))
+                .limit(TOP_QUEUES)
                 .forEach(TopQueues::add);
     }
 

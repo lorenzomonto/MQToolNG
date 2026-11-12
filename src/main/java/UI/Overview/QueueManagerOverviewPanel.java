@@ -8,8 +8,10 @@ import MQApi.Overview.QueueManagerOverview;
 import MQApi.Overview.QueueManagerOverview.QueueDepth;
 import UI.Helpers.IconManager;
 import com.formdev.flatlaf.FlatClientProperties;
+import com.formdev.flatlaf.util.UIScale;
 import com.ibm.mq.constants.MQConstants;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
@@ -48,10 +50,16 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
     }
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    // Height of the "Needs attention" and "Fullest queues" row until the user asks to see more
+    private static final int MIDDLE_HEIGHT = 440;
 
     private final Actions actions;
     private final IconManager iconManager = new IconManager();
-    private boolean showAllChecks;
+    // "Needs attention" opened with "Show N more" / showing the passed checks too; kept on refresh
+    private boolean expanded;
+    private boolean showPassed;
+    private String expandedFor;
+    private JPanel attentionFooter;
     private QueueManagerOverview overview;
     private List<HealthCheck> checks;
     private String queueManagerName;
@@ -115,6 +123,11 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         this.queueManagerName = name;
         this.overview = overview;
         this.checks = QueueManagerHealth.Evaluate(overview);
+        if (!name.equals(expandedFor)) {
+            expanded = false;
+            showPassed = false;
+            expandedFor = name;
+        }
         rebuild();
     }
 
@@ -127,7 +140,7 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         page.add(Widgets.Spacer(18));
         page.add(keyFigures());
         page.add(Widgets.Spacer(12));
-        page.add(row(2, attentionCard(), topQueuesCard()));
+        page.add(middleRow(attentionCard(), topQueuesCard()));
         page.add(Widgets.Spacer(12));
         page.add(weightedRow(new double[]{1, 1.2, 1.5}, servicesCard(), logCard(), settingsCard()));
         page.add(Widgets.Spacer(12));
@@ -157,6 +170,11 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
             boolean running = status == MQConstants.MQQMSTA_RUNNING;
             nameRow.add(Box.createHorizontalStrut(12));
             nameRow.add(new Widgets.Pill(MQFormat.Constant(status, "MQQMSTA_"), running ? Widgets.GREEN : Widgets.ORANGE));
+        }
+        long problems = QueueManagerHealth.Count(checks, Severity.PROBLEM);
+        if (problems > 0) {
+            nameRow.add(Box.createHorizontalStrut(8));
+            nameRow.add(new Widgets.Pill(problems + (problems == 1 ? " problem" : " problems"), Widgets.RED, false));
         }
         titles.add(nameRow);
         titles.add(Widgets.Spacer(4));
@@ -205,23 +223,26 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
     private JComponent keyFigures() {
         JPanel figures = new JPanel(new GridLayout(1, 5, 12, 0));
         figures.setOpaque(false);
-        figures.add(figure("Local queues", count(overview.LocalQueues),
+        figures.add(figure("inbox", Widgets.BLUE, "Local queues", count(overview.LocalQueues), null,
                 overview.LocalQueues < 0 ? "not available" : MQFormat.Number(overview.QueuesWithMessages) + " with messages"));
-        figures.add(figure("Messages queued", count(overview.LocalQueues < 0 ? -1 : overview.ApplicationMessages),
+        figures.add(figure("mail", Widgets.PURPLE, "Messages queued", count(overview.LocalQueues < 0 ? -1 : overview.ApplicationMessages), null,
                 "in " + MQFormat.Number(overview.ApplicationQueuesWithMessages) + " application " + (overview.ApplicationQueuesWithMessages == 1 ? "queue" : "queues")));
         Integer connections = overview.StatusInt(MQConstants.MQIACF_CONNECTION_COUNT);
         Integer maxHandles = overview.ConfigInt(MQConstants.MQIA_MAX_HANDLES);
-        figures.add(figure("Connections", connections == null ? "–" : MQFormat.Number(connections),
+        figures.add(figure("plug", Widgets.TEAL, "Connections", connections == null ? "–" : MQFormat.Number(connections), null,
                 maxHandles == null ? "" : "max handles " + MQFormat.Number(maxHandles)));
         String channels = overview.DefinedChannels < 0 ? MQFormat.Number(overview.RunningChannels())
                 : MQFormat.Number(overview.RunningChannels()) + " / " + MQFormat.Number(overview.DefinedChannels);
         long notRunning = overview.ChannelStatus.values().stream()
                 .filter(s -> s == MQConstants.MQCHS_RETRYING || s == MQConstants.MQCHS_STOPPED).count();
-        figures.add(figure("Channels running", overview.Errors.containsKey("Channel status") ? "–" : channels,
+        figures.add(figure("radio", notRunning > 0 ? Widgets.RED : Widgets.GREEN, "Channels running",
+                overview.Errors.containsKey("Channel status") ? "–" : channels, notRunning > 0 ? Widgets.RED : null,
                 notRunning == 0 ? "none retrying or stopped" : notRunning + " retrying or stopped"));
         QueueDepth dlq = overview.DeadLetterQueue;
         String dlqName = overview.ConfigText(MQConstants.MQCA_DEAD_LETTER_Q_NAME);
-        figures.add(figure("Dead-letter queue", dlq == null ? "–" : MQFormat.Number(dlq.Current),
+        boolean deadLetters = dlq != null && dlq.Current > 0;
+        figures.add(figure("archive-x", deadLetters ? Widgets.ORANGE : Widgets.GREEN, "Dead-letter queue",
+                dlq == null ? "–" : MQFormat.Number(dlq.Current), deadLetters ? Widgets.ORANGE : null,
                 dlqName == null || dlqName.isEmpty() ? "not defined" : dlqName));
         return figures;
     }
@@ -230,56 +251,126 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         return value < 0 ? "–" : MQFormat.Number(value);
     }
 
-    private JComponent figure(String title, String value, String detail) {
+    /** Key figure card: icon and title, the value (in valueColor when it signals a problem), a detail line. */
+    private JComponent figure(String icon, Color iconColor, String title, String value, Color valueColor, String detail) {
         Widgets.Card card = new Widgets.Card();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.add(Widgets.Muted(title));
-        card.add(Widgets.Styled(value, "font: bold +10"));
+        // The icon goes beside the value, so the title keeps the whole width of the card
+        JPanel valueRow = new JPanel(new BorderLayout(8, 0));
+        valueRow.setOpaque(false);
+        JLabel valueLabel = Widgets.Styled(value, "font: bold +10");
+        if (valueColor != null) {
+            valueLabel.setForeground(Widgets.Ink(valueColor));
+        }
+        valueRow.add(valueLabel, BorderLayout.CENTER);
+        valueRow.add(new JLabel(new Widgets.IconTile(icon, iconColor)), BorderLayout.EAST);
+        card.add(valueRow);
         JLabel detailLabel = Widgets.Muted(detail);
         detailLabel.putClientProperty(FlatClientProperties.STYLE_CLASS, "small");
         card.add(detailLabel);
+        for (java.awt.Component component : card.getComponents()) {
+            ((JComponent) component).setAlignmentX(LEFT_ALIGNMENT);
+        }
         card.setToolTipText(title + ": " + value + (detail.isEmpty() ? "" : " · " + detail));
         return card;
     }
 
     private JComponent attentionCard() {
-        Widgets.Card card = Widgets.Card("Needs attention");
-        JPanel rows = verticalList();
+        Widgets.Card card = new Widgets.Card();
+        JPanel heading = new JPanel(new BorderLayout(8, 0));
+        heading.setOpaque(false);
+        heading.add(Widgets.Styled("Needs attention", "font: bold"), BorderLayout.WEST);
+        JPanel counts = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        counts.setOpaque(false);
+        addCount(counts, Severity.PROBLEM, "critical", "critical");
+        addCount(counts, Severity.WARNING, "warning", "warnings");
+        addCount(counts, Severity.NOTE, "info", "info");
+        heading.add(counts, BorderLayout.EAST);
+        card.add(heading, BorderLayout.NORTH);
+
+        boolean open = expanded || showPassed;
+        AttentionList list = new AttentionList(hidden -> updateAttentionFooter(hidden));
+        list.SetCollapsed(!open);
         List<HealthCheck> visible = checks.stream()
-                .filter(c -> showAllChecks || c.Level != Severity.OK)
+                .filter(c -> showPassed || c.Level != Severity.OK)
                 .collect(Collectors.toList());
         if (visible.isEmpty()) {
-            rows.add(listRow(new Widgets.Dot(Widgets.GREEN), "Everything looks fine", null, null));
+            list.AddRow(Severity.OK, "Everything looks fine", null, null);
         }
         for (HealthCheck check : visible) {
-            JButton action = null;
-            switch (check.Action) {
-                case SHOW_QUEUE:
-                    action = Widgets.Link("Show queue", () -> actions.ShowQueue(check.Target));
-                    break;
-                case BROWSE_QUEUE:
-                    action = Widgets.Link("Browse messages", () -> actions.BrowseQueue(check.Target));
-                    break;
-                default:
-                    break;
-            }
-            rows.add(listRow(new Widgets.Dot(Widgets.SeverityColor(check.Level)), check.Title, check.Detail, action));
+            list.AddRow(check.Level, check.Title, check.Detail, actionFor(check));
         }
-        long passed = QueueManagerHealth.Count(checks, Severity.OK);
-        JButton toggle = Widgets.Link(showAllChecks ? "Hide passed checks" : "Show all checks (" + passed + " passed)", () -> {
-            showAllChecks = !showAllChecks;
-            rebuild();
-        });
-        JPanel south = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        south.setOpaque(false);
-        south.add(toggle);
-        card.add(top(rows), BorderLayout.CENTER);
-        card.add(south, BorderLayout.SOUTH);
+        card.add(list, BorderLayout.CENTER);
+
+        // Always as tall as a button, so the rows that fit do not change when the button appears
+        attentionFooter = new JPanel(new BorderLayout(8, 0));
+        attentionFooter.setOpaque(false);
+        attentionFooter.setPreferredSize(new Dimension(1, new JButton("X").getPreferredSize().height));
+        if (open) {
+            updateAttentionFooter(0);
+        }
+        card.add(attentionFooter, BorderLayout.SOUTH);
         return card;
     }
 
+    private void addCount(JPanel counts, Severity severity, String one, String many) {
+        long count = QueueManagerHealth.Count(checks, severity);
+        if (count > 0) {
+            counts.add(new Widgets.Pill(count + " " + (count == 1 ? one : many), Widgets.SeverityColor(severity), false));
+        }
+    }
+
+    private JButton actionFor(HealthCheck check) {
+        switch (check.Action) {
+            case SHOW_QUEUE:
+                return Widgets.Link("Show queue", () -> actions.ShowQueue(check.Target));
+            case BROWSE_QUEUE:
+                return Widgets.Link("Browse messages", () -> actions.BrowseQueue(check.Target));
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * One button under the checks: "Show N more" while some problems do not fit; once they are
+     * all visible, the passed checks can be shown; "Show less" goes back to the starting height.
+     */
+    private void updateAttentionFooter(int hidden) {
+        attentionFooter.removeAll();
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        left.setOpaque(false);
+        long passed = QueueManagerHealth.Count(checks, Severity.OK);
+        if (!expanded && !showPassed && hidden > 0) {
+            JButton more = new JButton("Show " + hidden + " more");
+            more.addActionListener(e -> {
+                expanded = true;
+                rebuild();
+            });
+            left.add(more);
+        } else if (passed > 0) {
+            left.add(Widgets.Link(showPassed ? "Hide passed checks" : "Show passed checks (" + passed + ")", () -> {
+                showPassed = !showPassed;
+                rebuild();
+            }));
+        }
+        attentionFooter.add(left, BorderLayout.CENTER);
+        if (expanded) {
+            JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            right.setOpaque(false);
+            right.add(Widgets.Link("Show less", () -> {
+                expanded = false;
+                showPassed = false;
+                rebuild();
+            }));
+            attentionFooter.add(right, BorderLayout.EAST);
+        }
+        attentionFooter.revalidate();
+        attentionFooter.repaint();
+    }
+
     private JComponent topQueuesCard() {
-        Widgets.Card card = Widgets.Card("Queues with most messages");
+        Widgets.Card card = Widgets.Card("Fullest queues");
         JPanel rows = verticalList();
         if (overview.TopQueues.isEmpty()) {
             rows.add(Widgets.Muted(overview.LocalQueues < 0 ? "Not available" : "No messages in application queues"));
@@ -290,12 +381,44 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
             JButton name = Widgets.Link(queue.Name, () -> actions.ShowQueue(queue.Name));
             name.setHorizontalAlignment(SwingConstants.LEADING);
             row.add(name, BorderLayout.WEST);
-            JLabel depth = new JLabel("<html><b>" + MQFormat.Number(queue.Current) + "</b> / " + MQFormat.Number(queue.Max) + "</html>");
+            String percent = queue.Max > 0 ? " · " + queue.Percent() + "%" : "";
+            JLabel depth = new JLabel("<html><b>" + MQFormat.Number(queue.Current) + "</b> / " + MQFormat.Number(queue.Max) + percent + "</html>");
             row.add(depth, BorderLayout.EAST);
             rows.add(row);
+            JPanel bar = new JPanel(new BorderLayout());
+            bar.setOpaque(false);
+            bar.setBorder(BorderFactory.createEmptyBorder(3, 4, 10, 0));
+            bar.add(new Widgets.FillBar(queue.Fill(), fillColor(queue), 6));
+            rows.add(bar);
+        }
+        for (java.awt.Component component : rows.getComponents()) {
+            ((JComponent) component).setAlignmentX(LEFT_ALIGNMENT);
         }
         card.add(top(rows), BorderLayout.CENTER);
+        if (!overview.TopQueues.isEmpty()) {
+            JPanel legend = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
+            legend.setOpaque(false);
+            legend.add(legendItem(Widgets.BLUE, "up to " + QueueManagerHealth.QUEUE_WARNING_PERCENT + "%"));
+            legend.add(legendItem(Widgets.ORANGE, "up to " + QueueManagerHealth.QUEUE_PROBLEM_PERCENT + "%"));
+            legend.add(legendItem(Widgets.RED, "over " + QueueManagerHealth.QUEUE_PROBLEM_PERCENT + "%"));
+            card.add(legend, BorderLayout.SOUTH);
+        }
         return card;
+    }
+
+    /** Same thresholds as the "filling up" and "almost full" checks. */
+    private static Color fillColor(QueueDepth queue) {
+        int percent = queue.Percent();
+        return percent > QueueManagerHealth.QUEUE_PROBLEM_PERCENT ? Widgets.RED
+                : percent > QueueManagerHealth.QUEUE_WARNING_PERCENT ? Widgets.ORANGE : Widgets.BLUE;
+    }
+
+    private static JLabel legendItem(Color color, String text) {
+        JLabel label = Widgets.Muted(text);
+        label.setIcon(new Widgets.Dot(color));
+        label.setIconTextGap(5);
+        label.putClientProperty(FlatClientProperties.STYLE_CLASS, "small");
+        return label;
     }
 
     private JComponent servicesCard() {
@@ -321,7 +444,7 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         boolean running = status == MQConstants.MQSVC_STATUS_RUNNING;
         JLabel value = new JLabel(MQFormat.Constant(status, "MQSVC_STATUS_"));
         value.putClientProperty(FlatClientProperties.STYLE, "font: bold");
-        value.setForeground(running ? Widgets.GREEN.darker() : Widgets.RED);
+        value.setForeground(Widgets.Ink(running ? Widgets.GREEN : Widgets.RED));
         rows.add(listRow(new Widgets.Dot(running ? Widgets.GREEN : Widgets.RED), name, null, value));
     }
 
@@ -338,11 +461,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
             value.add(Widgets.Styled(inUse + "%", "font: bold +6"));
             value.add(Widgets.Muted("in use · " + type));
             content.add(value);
-            JProgressBar bar = new JProgressBar(0, 100);
-            bar.setValue(inUse);
-            bar.putClientProperty(FlatClientProperties.STYLE, "arc: 999; foreground: " + (inUse > QueueManagerHealth.LOG_WARNING_PERCENT ? "#E8833A" : "#22A06B"));
-            bar.setPreferredSize(new Dimension(100, 6));
-            content.add(bar);
+            content.add(Widgets.Spacer(4));
+            content.add(new Widgets.FillBar(inUse / 100.0, inUse > QueueManagerHealth.LOG_WARNING_PERCENT ? Widgets.ORANGE : Widgets.GREEN, 6));
             content.add(Widgets.Spacer(8));
             Widgets.KeyValueGrid grid = new Widgets.KeyValueGrid();
             Integer primary = overview.StatusInt(MQConstants.MQIACF_LOG_PRIMARIES);
@@ -397,12 +517,24 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
 
     // --- Layout helpers ---
 
-    private static JPanel row(int columns, JComponent... cards) {
-        JPanel row = new JPanel(new GridLayout(1, columns, 12, 0));
+    /** Two equal columns that start at a fixed height, and grow only when "Needs attention" is opened. */
+    private JPanel middleRow(JComponent left, JComponent right) {
+        JPanel row = new JPanel(new GridLayout(1, 2, 12, 0)) {
+            @Override
+            public Dimension getPreferredSize() {
+                Dimension size = super.getPreferredSize();
+                int fixed = UIScale.scale(MIDDLE_HEIGHT);
+                return new Dimension(size.width, expanded || showPassed ? Math.max(fixed, size.height) : fixed);
+            }
+
+            @Override
+            public Dimension getMaximumSize() {
+                return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+            }
+        };
         row.setOpaque(false);
-        for (JComponent card : cards) {
-            row.add(card);
-        }
+        row.add(left);
+        row.add(right);
         return row;
     }
 

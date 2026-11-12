@@ -2,6 +2,7 @@ package UI.Overview;
 
 import MQApi.Overview.HealthCheck.Severity;
 import com.formdev.flatlaf.FlatClientProperties;
+import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.ui.FlatLineBorder;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -32,6 +33,8 @@ public class Widgets {
     public static final Color ORANGE = new Color(0xE8833A);
     public static final Color RED = new Color(0xE5484D);
     public static final Color BLUE = new Color(0x2F6FED);
+    public static final Color PURPLE = new Color(0x8250DF);
+    public static final Color TEAL = new Color(0x0F9488);
 
     public static Color SeverityColor(Severity severity) {
         switch (severity) {
@@ -117,27 +120,114 @@ public class Widgets {
         }
     }
 
+    /** The color with the given alpha (0-255): a light tint over any background, light or dark. */
+    public static Color Tint(Color color, int alpha) {
+        return new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha);
+    }
+
+    /** Text color for a status color: darker on light themes, lighter on dark ones, so it stays readable. */
+    public static Color Ink(Color color) {
+        return FlatLaf.isLafDark() ? color.brighter() : color.darker();
+    }
+
     /** Rounded label with a tinted background, e.g. the "Running" status. */
     public static class Pill extends JLabel {
         private final Color color;
 
         public Pill(String text, Color color) {
-            super(text, new Dot(color), LEADING);
+            this(text, color, true);
+        }
+
+        public Pill(String text, Color color, boolean dot) {
+            super(text, dot ? new Dot(color) : null, LEADING);
             this.color = color;
             setIconTextGap(6);
             setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 10));
             putClientProperty(FlatClientProperties.STYLE, "font: bold -1");
-            setForeground(color.darker());
+            setForeground(Ink(color));
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 36));
+            g2.setColor(Tint(color, 36));
             g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
             g2.dispose();
             super.paintComponent(g);
+        }
+    }
+
+    /** Icon on a rounded square tinted with its color, at the top of the key figure cards. */
+    public static class IconTile implements Icon {
+        private final Icon icon;
+        private final Color color;
+        private final int size;
+
+        public IconTile(String iconName, Color color) {
+            this.icon = UI.Helpers.IconManager.Named(iconName, color);
+            this.color = color;
+            this.size = Math.max(26, icon.getIconHeight() + 10);
+        }
+
+        @Override
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(Tint(color, 34));
+            g2.fillRoundRect(x, y, size, size, 8, 8);
+            g2.dispose();
+            icon.paintIcon(c, g, x + (size - icon.getIconWidth()) / 2, y + (size - icon.getIconHeight()) / 2);
+        }
+
+        @Override
+        public int getIconWidth() {
+            return size;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return size;
+        }
+    }
+
+    /** Thin rounded bar filled to a fraction, e.g. how full a queue is. */
+    public static class FillBar extends JComponent {
+        private final double fraction;
+        private final Color color;
+        private final int thickness;
+
+        public FillBar(double fraction, Color color, int thickness) {
+            this.fraction = Math.max(0, Math.min(1, fraction));
+            this.color = color;
+            this.thickness = thickness;
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(40, thickness);
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            return new Dimension(Integer.MAX_VALUE, thickness);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int y = (getHeight() - thickness) / 2;
+            Color track = UIManager.getColor("Component.borderColor");
+            g2.setColor(track != null ? Tint(track, 150) : new Color(0, 0, 0, 20));
+            g2.fillRoundRect(0, y, getWidth(), thickness, thickness, thickness);
+            if (fraction > 0) {
+                // Even an almost empty queue shows a sliver, so the bar is not mistaken for missing data
+                int width = Math.max(thickness, (int) Math.round(getWidth() * fraction));
+                g2.setColor(color);
+                g2.fillRoundRect(0, y, width, thickness, thickness, thickness);
+            }
+            g2.dispose();
         }
     }
 
