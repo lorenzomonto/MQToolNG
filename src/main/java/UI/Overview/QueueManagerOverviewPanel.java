@@ -20,7 +20,9 @@ import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
@@ -59,6 +61,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
     private boolean expanded;
     private boolean showPassed;
     private String expandedFor;
+    // Checks whose long detail was opened with "Show all" (by title); kept on refresh
+    private final Set<String> openDetails = new HashSet<>();
     private JPanel attentionFooter;
     private QueueManagerOverview overview;
     private List<HealthCheck> checks;
@@ -126,6 +130,7 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         if (!name.equals(expandedFor)) {
             expanded = false;
             showPassed = false;
+            openDetails.clear();
             expandedFor = name;
         }
         rebuild();
@@ -290,7 +295,13 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         card.add(heading, BorderLayout.NORTH);
 
         boolean open = expanded || showPassed;
-        AttentionList list = new AttentionList(hidden -> updateAttentionFooter(hidden));
+        AttentionList list = new AttentionList(hidden -> updateAttentionFooter(hidden), openDetails, () -> {
+            // The opened row is taller: the list opens too, so it stays visible with the ones below
+            if (!expanded && !showPassed) {
+                expanded = true;
+                rebuild();
+            }
+        });
         list.SetCollapsed(!open);
         List<HealthCheck> visible = checks.stream()
                 .filter(c -> showPassed || c.Level != Severity.OK)
@@ -333,38 +344,39 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
     }
 
     /**
-     * One button under the checks: "Show N more" while some problems do not fit; once they are
-     * all visible, the passed checks can be shown; "Show less" goes back to the starting height.
+     * Under the checks, on the left: "Show N more" while some problems do not fit, "Show less" once
+     * opened (the same button), and the link that shows or hides the passed checks.
      */
     private void updateAttentionFooter(int hidden) {
         attentionFooter.removeAll();
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JPanel left = new JPanel();
+        left.setLayout(new BoxLayout(left, BoxLayout.X_AXIS));
         left.setOpaque(false);
         long passed = QueueManagerHealth.Count(checks, Severity.OK);
-        if (!expanded && !showPassed && hidden > 0) {
-            JButton more = new JButton("Show " + hidden + " more");
-            more.addActionListener(e -> {
-                expanded = true;
+        boolean canShowMore = !expanded && !showPassed && hidden > 0;
+        if (canShowMore || expanded) {
+            JButton toggle = new JButton(expanded ? "Show less" : "Show " + hidden + " more");
+            toggle.addActionListener(e -> {
+                expanded = !expanded;
+                if (!expanded) {
+                    // Back to the starting view
+                    showPassed = false;
+                    openDetails.clear();
+                }
                 rebuild();
             });
-            left.add(more);
-        } else if (passed > 0) {
+            left.add(toggle);
+        }
+        if (!canShowMore && passed > 0) {
+            if (left.getComponentCount() > 0) {
+                left.add(Box.createHorizontalStrut(12));
+            }
             left.add(Widgets.Link(showPassed ? "Hide passed checks" : "Show passed checks (" + passed + ")", () -> {
                 showPassed = !showPassed;
                 rebuild();
             }));
         }
-        attentionFooter.add(left, BorderLayout.CENTER);
-        if (expanded) {
-            JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-            right.setOpaque(false);
-            right.add(Widgets.Link("Show less", () -> {
-                expanded = false;
-                showPassed = false;
-                rebuild();
-            }));
-            attentionFooter.add(right, BorderLayout.EAST);
-        }
+        attentionFooter.add(left, BorderLayout.WEST);
         attentionFooter.revalidate();
         attentionFooter.repaint();
     }
