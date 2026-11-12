@@ -29,6 +29,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
@@ -143,16 +144,9 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         thread.start();
     }
     
+    // In the loading thread: "Loading..." stays until the data is shown (a large message takes seconds)
     private void processMessage(boolean asEBCDIC){
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                loadMessage(message, asEBCDIC);
-            }
-        });
-        thread.start();
-        
-
+        loadMessage(message, asEBCDIC);
     }
     
     private void loadMessage(MQMessage message, boolean asEBCDIC){
@@ -169,7 +163,11 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     private void showMessage(MQMessage message, boolean asEBCDIC){
         loadMessageMQMD(message);
         // Headers that can be read; a damaged one after the DLH does not hide the DLH or the data
-        MQDLH dlh = MQUtility.FindHeader(MQUtility.ReadHeaders(message), MQDLH.class);
+        MQUtility.MessageHeaders headers = MQUtility.ParseHeaders(message);
+        MQDLH dlh = MQUtility.FindHeader(headers.Headers, MQDLH.class);
+        if(headers.Problem != null){
+            warnHeadersNotRead(headers, message);
+        }
         try {
             message.seek(0);
         } catch (IOException ex) {
@@ -196,14 +194,35 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
                 compactOriginal = content;
                 content = XMLHelper.XMLStringFormat(content);
             }
-            ContentTypeSelectComboBox.setSelectedIndex(1);
-            this.ContentEditorPane.setContentType("XML");
+            showContent(1, "XML");
         }
         else{
-            ContentTypeSelectComboBox.setSelectedIndex(0);
-            this.ContentEditorPane.setContentType("Text");
+            showContent(0, "Text");
         }
-        this.ContentEditorPane.setText(content); 
+    }
+
+    // Says why the data may include header bytes, with the first bytes of the message to find out more
+    private void warnHeadersNotRead(MQUtility.MessageHeaders headers, MQMessage message){
+        String text = "<html>The headers of this message could not all be read: " + escape(headers.Problem)
+                + ".<br>" + (headers.Headers.isEmpty() ? "The data is shown from the first byte." : "The data is shown from the first header that could not be read.")
+                + "<br><br>Format " + escape(message.format.trim()) + ", encoding " + message.encoding + ", CCSID " + message.characterSet
+                + "<br>First bytes:<br><tt>" + String.join("<br>", MQUtility.FirstBytes(message, 48).split("(?<=\\G.{32})")) + "</tt></html>";
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, text, "Message headers", JOptionPane.WARNING_MESSAGE));
+    }
+
+    private static String escape(String text){
+        return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    // The data is set once: selecting another type in the combo box already shows it
+    private void showContent(int typeIndex, String contentType){
+        if(ContentTypeSelectComboBox.getSelectedIndex() != typeIndex){
+            ContentTypeSelectComboBox.setSelectedIndex(typeIndex);
+        }
+        else{
+            this.ContentEditorPane.setContentType(contentType);
+            this.ContentEditorPane.setText(content);
+        }
     }
     
 

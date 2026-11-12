@@ -22,6 +22,8 @@ import com.ibm.mq.MQQueue;
 import com.ibm.mq.MQQueueManager;
 import com.ibm.mq.constants.CMQC;
 import com.ibm.mq.constants.MQConstants;
+import com.ibm.mq.headers.CCSID;
+import com.ibm.mq.headers.MQChainable;
 import com.ibm.mq.headers.MQDLH;
 import com.ibm.mq.headers.MQDataException;
 import com.ibm.mq.headers.MQHeader;
@@ -34,6 +36,8 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
+import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -1018,6 +1022,12 @@ public class MQUtility {
         
     //Msc
     
+    /** Headers read from the start of a message, and why the reading stopped early (null when it did not). */
+    public static class MessageHeaders {
+        public final List<MQHeader> Headers = new ArrayList<>();
+        public String Problem;
+    }
+
     /**
      * The MQ headers at the start of the message (dead-letter header, RFH2...), read one at a time: a
      * header that cannot be read, e.g. a format that announces a header the data does not contain,
@@ -1025,25 +1035,94 @@ public class MQUtility {
      * Afterwards the message is positioned at the start of the data.
      */
     public static List<MQHeader> ReadHeaders(MQMessage message){
-        List<MQHeader> headers = new ArrayList<>();
+        return ParseHeaders(message).Headers;
+    }
+
+    public static MessageHeaders ParseHeaders(MQMessage message){
+        MessageHeaders result = new MessageHeaders();
         int dataOffset = 0;
         try {
             message.seek(0);
             MQHeaderIterator iterator = new MQHeaderIterator(message);
+            if(MQConstants.MQFMT_DEAD_LETTER_HEADER.equals(message.format)){
+                // Read from its own bytes: the MQMD encoding and CCSID may not match how it was written.
+                // A plain stream, because from an MQMessage the headers are always read with its MQMD values.
+                byte[] bytes = new byte[message.getMessageLength()];
+                message.seek(0);
+                message.readFully(bytes);
+                MQDLH dlh = readDeadLetterHeader(bytes);
+                if(dlh != null){
+                    result.Headers.add(dlh);
+                    dataOffset = dlh.size();
+                    iterator = new MQHeaderIterator(new DataInputStream(new ByteArrayInputStream(bytes, dataOffset, bytes.length - dataOffset)),
+                            dlh.getFormat(), dlh.getEncoding(), dlh.getCodedCharSetId());
+                }
+                else{
+                    message.seek(0);
+                }
+            }
             while(iterator.hasNext()){
                 MQHeader header = iterator.nextHeader();
-                headers.add(header);
+                result.Headers.add(header);
                 dataOffset += header.size();
             }
         } catch (IOException | RuntimeException ex) {
-            LogWriter.WriteToLog("MQUtility", "ReadHeaders (data after " + headers.size() + " headers)", ex);
+            Throwable cause = ex;
+            while(cause.getCause() != null && cause.getCause() != cause){
+                cause = cause.getCause();
+            }
+            result.Problem = cause.getMessage() != null ? cause.getMessage() : cause.toString();
+            LogWriter.WriteToLog("MQUtility", "ReadHeaders (data after " + result.Headers.size() + " headers)", ex);
+        }
+        if(result.Problem == null && result.Headers.isEmpty() && MQConstants.MQFMT_DEAD_LETTER_HEADER.equals(message.format)){
+            result.Problem = "the format is MQDEAD but the data does not start with a dead-letter header";
         }
         try {
             message.seek(dataOffset);
         } catch (IOException ex) {
             Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return headers;
+        return result;
+    }
+
+    /**
+     * The dead-letter header at the start of the message, read with the encoding and character set its
+     * own bytes show: "DLH " in ASCII or EBCDIC, version 1 in either byte order. Null when it is not there.
+     */
+    private static MQDLH readDeadLetterHeader(byte[] start) throws IOException {
+        if(start.length < 8){
+            return null;
+        }
+        int ccsid;
+        if(start[0] == 'D' && start[1] == 'L' && start[2] == 'H' && start[3] == ' '){
+            ccsid = 819;
+        }
+        else if((start[0] & 0xFF) == 0xC4 && (start[1] & 0xFF) == 0xD3 && (start[2] & 0xFF) == 0xC8 && (start[3] & 0xFF) == 0x40){
+            ccsid = 500;
+        }
+        else{
+            return null;
+        }
+        boolean bigEndian = start[4] == 0 && start[7] != 0;
+        int encoding = bigEndian ? (ccsid == 500 ? 785 : 273) : 546;
+        try{
+            return new MQDLH(new DataInputStream(new ByteArrayInputStream(start)), encoding, ccsid);
+        }catch(MQDataException ex){
+            throw new IOException("dead-letter header not valid: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** The first bytes of the message in hexadecimal, to show what it contains when it cannot be read. */
+    public static String FirstBytes(MQMessage message, int count){
+        try{
+            message.seek(0);
+            byte[] bytes = new byte[Math.min(count, message.getMessageLength())];
+            message.readFully(bytes);
+            message.seek(0);
+            return BytesToHex(bytes);
+        }catch(IOException ex){
+            return "";
+        }
     }
 
     public static <T extends MQHeader> T FindHeader(List<MQHeader> headers, Class<T> type){
@@ -1069,26 +1148,48 @@ public class MQUtility {
         return msglen;
     }
     
+    /**
+     * The data after the headers as text, in the character set the headers give for it: behind a DLH
+     * (or RFH2) the MQMD CCSID describes the header, the data may be in another one (e.g. EBCDIC from
+     * z/OS). Bytes that are not valid in that character set become replacement characters.
+     */
     public static String GetMessageStringContent(MQMessage message, Integer length){
-        String content = "";
-        int messageLength = GetMessageContentLength(message);
-        int requiredLen = length != null ? length > messageLength? messageLength : length : messageLength;
         try{
-            //message.seek(0);
-            try{
-                content = message.readStringOfByteLength(requiredLen);  
-            }catch(Exception ex){
-                //tmp solution for wrong charset.       
-                byte[] buff = new byte[requiredLen];
-                message.readFully(buff);
-                String strContent = new String(buff);
-                content = strContent;
-            }     
+            int messageLength = message.getMessageLength();
+            List<MQHeader> headers = ReadHeaders(message);
+            for(MQHeader header : headers){
+                messageLength -= header.size();
+            }
+            int requiredLen = length != null && length < messageLength ? length : messageLength;
+            byte[] buff = new byte[Math.max(0, requiredLen)];
+            message.readFully(buff);
+            return new String(buff, DataCharset(message, headers));
         }catch(IOException ex){
-            
+            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
         }
-        
-        return content;
+        return "";
+    }
+
+    /** Character set of the data after the headers: the last one a header gives, otherwise the MQMD one. */
+    public static Charset DataCharset(MQMessage message, List<MQHeader> headers){
+        int ccsid = message.characterSet;
+        for(MQHeader header : headers){
+            if(header instanceof MQChainable){
+                // MQCCSI_INHERIT and the other special values (zero or negative) keep the previous one
+                int next = ((MQChainable) header).nextCharacterSet();
+                if(next > 0){
+                    ccsid = next;
+                }
+            }
+        }
+        for(int candidate : new int[]{ccsid, message.characterSet}){
+            try{
+                return Charset.forName(CCSID.getCodepage(candidate));
+            }catch(Exception ex){
+                // Not known to Java: try the next one
+            }
+        }
+        return StandardCharsets.UTF_8;
     }
     
     // test method
