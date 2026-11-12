@@ -17,9 +17,6 @@ import com.ibm.mq.MQMessage;
 import com.ibm.mq.MQQueueManager;
 import com.ibm.mq.constants.MQConstants;
 import com.ibm.mq.headers.MQDLH;
-import com.ibm.mq.headers.MQDataException;
-import com.ibm.mq.headers.MQHeaderList;
-import com.ibm.mq.headers.MQRFH2;
 import java.awt.Component;
 import java.awt.ComponentOrientation;
 import java.awt.Font;
@@ -158,34 +155,31 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
 
     }
     
-    private void loadMessage(MQMessage message, boolean asEBCDIC){       
+    private void loadMessage(MQMessage message, boolean asEBCDIC){
+        try{
+            showMessage(message, asEBCDIC);
+        }
+        catch(RuntimeException ex){
+            // Never leave the dialog empty without saying why
+            Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
+            this.ContentEditorPane.setText("The message could not be shown: " + ex);
+        }
+    }
+
+    private void showMessage(MQMessage message, boolean asEBCDIC){
         loadMessageMQMD(message);
-        MQHeaderList list = null;
+        // Headers that can be read; a damaged one after the DLH does not hide the DLH or the data
+        MQDLH dlh = MQUtility.FindHeader(MQUtility.ReadHeaders(message), MQDLH.class);
         try {
-            list = new MQHeaderList(message, false);
             message.seek(0);
-        } catch (MQDataException | IOException ex) {
+        } catch (IOException ex) {
             Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
         }
-        if(list != null && list.size() > 0){
-            MQDLH dlh = MQUtility.getDLH(list);
-            if(dlh != null){
-                this.MessagePanel.setEnabledAt(2, true);
-                loadMessageDLH(dlh);
-            }
-            MQRFH2 mqrfh2 = MQUtility.getMQHRF2(list);
-            if(mqrfh2 != null){
-                try {
-                    String[] floders = mqrfh2.getFolderStrings();
-                    String aa = "ASDAS";
-                    
-                } catch (IOException ex) {
-                    Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
-                }
-                
-            }
+        if(dlh != null){
+            this.MessagePanel.setEnabledAt(2, true);
+            loadMessageDLH(dlh);
         }
-        
+
         if(!asEBCDIC){
             content = MQUtility.GetMessageStringContent(message, null); 
         }

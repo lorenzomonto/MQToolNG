@@ -24,6 +24,8 @@ import com.ibm.mq.constants.CMQC;
 import com.ibm.mq.constants.MQConstants;
 import com.ibm.mq.headers.MQDLH;
 import com.ibm.mq.headers.MQDataException;
+import com.ibm.mq.headers.MQHeader;
+import com.ibm.mq.headers.MQHeaderIterator;
 import com.ibm.mq.headers.MQHeaderList;
 import com.ibm.mq.headers.MQRFH2;
 import com.ibm.mq.headers.internal.Header;
@@ -49,6 +51,7 @@ import java.util.ArrayList;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.*;
 import java.util.zip.GZIPInputStream;
@@ -910,7 +913,35 @@ public class MQUtility {
         } catch (IOException ex) {
             Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
         } catch(Exception ex){
-            
+            // A header after the DLH cannot be read: the DLH is removed alone, the rest is kept as it is
+            return removeDLHOnly(message);
+        }
+        return message;
+    }
+
+    private static MQMessage removeDLHOnly(MQMessage message){
+        try {
+            message.seek(0);
+            List<MQHeader> headers = ReadHeaders(message);
+            MQDLH dlh = headers.isEmpty() ? null : FindHeader(headers.subList(0, 1), MQDLH.class);
+            if(dlh == null){
+                message.seek(0);
+                return message;
+            }
+            message.seek(dlh.size());
+            byte[] rest = new byte[message.getDataLength()];
+            message.readFully(rest);
+            MQMessage newMessage = new MQMessage();
+            copyMessageMQMD(newMessage, message);
+            // The DLH describes the data after it
+            newMessage.format = dlh.getFormat();
+            newMessage.encoding = dlh.getEncoding();
+            newMessage.characterSet = dlh.getCodedCharSetId();
+            newMessage.write(rest);
+            message.seek(0);
+            return newMessage;
+        } catch (IOException | RuntimeException ex) {
+            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
         }
         return message;
     }
@@ -987,38 +1018,53 @@ public class MQUtility {
         
     //Msc
     
-    public static int GetMessageContentLength(MQMessage message){     
-        int msglen = 0;
+    /**
+     * The MQ headers at the start of the message (dead-letter header, RFH2...), read one at a time: a
+     * header that cannot be read, e.g. a format that announces a header the data does not contain,
+     * ends the list and its bytes count as data, so the headers before it (the DLH) are still shown.
+     * Afterwards the message is positioned at the start of the data.
+     */
+    public static List<MQHeader> ReadHeaders(MQMessage message){
+        List<MQHeader> headers = new ArrayList<>();
+        int dataOffset = 0;
         try {
             message.seek(0);
-            msglen = message.getMessageLength();
-            MQHeaderList list = new MQHeaderList(message);
-            if(list.size() > 0){
-                boolean seek = true;
-                for (Object list1 : list) {
-                    Header header = (Header) list1;
-                    msglen = msglen - header.size();
-                    seek = false;
-                }
-//                if (list.indexOf("MQRFH2") >= 0) {
-//                    MQRFH2 header = (MQRFH2) list.get(list.indexOf("MQRFH2"));
-//                    msglen = msglen - header.size();
-//                    seek = false;
-//                }
-//                if (list.indexOf("MQDLH") >= 0) {
-//                    MQDLH header = (MQDLH) list.get(list.indexOf("MQDLH"));
-//                    msglen = msglen - header.size();
-//                    seek = false;
-//                }
-                if(seek){
-                    message.seek(0);
-                }
+            MQHeaderIterator iterator = new MQHeaderIterator(message);
+            while(iterator.hasNext()){
+                MQHeader header = iterator.nextHeader();
+                headers.add(header);
+                dataOffset += header.size();
             }
-            
-        } catch (MQDataException | IOException ex) {
-            Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
-        }catch(Exception ex){
-            Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException | RuntimeException ex) {
+            LogWriter.WriteToLog("MQUtility", "ReadHeaders (data after " + headers.size() + " headers)", ex);
+        }
+        try {
+            message.seek(dataOffset);
+        } catch (IOException ex) {
+            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return headers;
+    }
+
+    public static <T extends MQHeader> T FindHeader(List<MQHeader> headers, Class<T> type){
+        for(MQHeader header : headers){
+            if(type.isInstance(header)){
+                return type.cast(header);
+            }
+        }
+        return null;
+    }
+
+    /** Length of the data after the headers; the message is positioned at its start. */
+    public static int GetMessageContentLength(MQMessage message){
+        int msglen = 0;
+        try {
+            msglen = message.getMessageLength();
+            for(MQHeader header : ReadHeaders(message)){
+                msglen = msglen - header.size();
+            }
+        } catch(Exception ex){
+            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
         }
         return msglen;
     }
