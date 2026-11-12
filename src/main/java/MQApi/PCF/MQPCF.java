@@ -141,10 +141,15 @@ public class MQPCF {
         PCFMessageAgent agent = null;
         try {
             agent = getPCFMessageAgent(queueManager);
-            PCFMessage pcfCmd = new PCFMessage(MQConstants.MQCMD_INQUIRE_Q); 
-            pcfCmd.addParameter(MQConstants.MQCA_Q_NAME, queueNameFilter);
-            pcfCmd.addParameter(MQConstants.MQIA_Q_TYPE, MQConstants.MQQT_ALL );
-            PCFMessage[] pcfResponse = agent.send(pcfCmd);           
+            PCFMessage[] pcfResponse = sendForList(agent, attributes -> {
+                PCFMessage pcfCmd = new PCFMessage(MQConstants.MQCMD_INQUIRE_Q); 
+                pcfCmd.addParameter(MQConstants.MQCA_Q_NAME, queueNameFilter);
+                pcfCmd.addParameter(MQConstants.MQIA_Q_TYPE, MQConstants.MQQT_ALL );
+                if(attributes){
+                    pcfCmd.addParameter(MQConstants.MQIACF_Q_ATTRS, listAttributes(QueueDetailModel.class, QueryType.QueueDetial));
+                }
+                return pcfCmd;
+            });
             WriteToDetailModel(pcfResponse, result, QueueDetailModel.class, type);
             result.QuerySuccess = true;
         } catch (MQDataException ex) {
@@ -334,10 +339,15 @@ public class MQPCF {
         PCFMessageAgent agent = null;
         try {
             agent = getPCFMessageAgent(queueManager);;
-            PCFMessage pcfCmdQueryDetail = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHANNEL);        
-            pcfCmdQueryDetail.addParameter(MQConstants.MQCACH_CHANNEL_NAME, channelNameFilter);
-            pcfCmdQueryDetail.addParameter(MQConstants.MQIACH_CHANNEL_TYPE, MQConstants.MQCHT_ALL );
-            PCFMessage[] pcfResponseDetail = agent.send(pcfCmdQueryDetail); 
+            PCFMessage[] pcfResponseDetail = sendForList(agent, attributes -> {
+                PCFMessage pcfCmdQueryDetail = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHANNEL);        
+                pcfCmdQueryDetail.addParameter(MQConstants.MQCACH_CHANNEL_NAME, channelNameFilter);
+                pcfCmdQueryDetail.addParameter(MQConstants.MQIACH_CHANNEL_TYPE, MQConstants.MQCHT_ALL );
+                if(attributes){
+                    pcfCmdQueryDetail.addParameter(MQConstants.MQIACF_CHANNEL_ATTRS, listAttributes(ChannelDetailModel.class, QueryType.ChannelDetail));
+                }
+                return pcfCmdQueryDetail;
+            });
             WriteToDetailModel(pcfResponseDetail, result, ChannelDetailModel.class, type);       
             MQChannelStatusListResult channelStatus = GetChannelStatusList(queueManager, "*", null, false);
             Hashtable<String, ChannelStatusValueModel> statusTable = new Hashtable<String, ChannelStatusValueModel>();
@@ -787,6 +797,32 @@ public class MQPCF {
     }
     
     private static final Map<Class<?>, List<Field>> valueFieldsCache = new ConcurrentHashMap<>();
+
+    // Builds an INQUIRE command; attributes = true asks only for the attributes the list shows
+    private interface ListCommand {
+        PCFMessage Create(boolean attributes);
+    }
+
+    // The lists ask only for the attributes they show (about a third of all of them, so a third
+    // of the data on the network); if the queue manager refuses the attribute list, everything is asked
+    private static PCFMessage[] sendForList(PCFMessageAgent agent, ListCommand command) throws MQDataException, IOException{
+        try {
+            return agent.send(command.Create(true));
+        } catch (PCFException ex) {
+            LogWriter.WriteToLog("MQPCF", "sendForList", ex);
+            return agent.send(command.Create(false));
+        }
+    }
+
+    // MQ constants of the fields of a list model that come from the given query
+    private static int[] listAttributes(Class<?> modelClass, QueryType queryType){
+        return getValueFields(modelClass).stream()
+                .map(field -> field.getAnnotation(MQObjectListtAnnotation.class))
+                .filter(annotation -> annotation.QueryType() == queryType)
+                .mapToInt(MQObjectListtAnnotation::MQConstant)
+                .distinct()
+                .toArray();
+    }
 
     // Fields whose MQObjectListtAnnotation asks to read their value from the PCF response
     private static List<Field> getValueFields(Class<?> modelClass){
