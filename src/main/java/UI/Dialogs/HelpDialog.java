@@ -35,9 +35,7 @@ public class HelpDialog extends javax.swing.JDialog {
                       "<p>Icons from Lucide <a href=\"https://lucide.dev/\">https://lucide.dev/</a></p>" +
                       "<p>Known issues :\n" +
                         "<ul>" +
-                          " <li>Update message feature not working correctly when the queue has more then 1 message with same id.</li>" +
-                          " <li>Currently not support local connection to queue manager</li>" +
-                          " <li>Message with header will fail to update</li>" +
+                          " <li>Only client connections (host, port and channel): the local bindings mode is not supported.</li>" +
                         "</ul>" +
                       "</p>" +
                       "<p>Features :\n" +

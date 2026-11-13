@@ -1327,6 +1327,31 @@ public class MQUtility {
         return "";
     }
 
+    /**
+     * Replaces the data of the message with the text and keeps its headers (DLH, RFH2...) as they
+     * are, with the text in the character set they give for the data. A message without headers
+     * becomes MQSTR. setDescriptor sets the edited MQMD values once the old data is cleared.
+     */
+    public static void ReplaceText(MQMessage message, String text, Runnable setDescriptor) throws IOException {
+        List<MQHeader> headers = ReadHeaders(message);
+        int headerLength = 0;
+        for(MQHeader header : headers){
+            headerLength += header.size();
+        }
+        byte[] headerBytes = new byte[headerLength];
+        message.seek(0);
+        message.readFully(headerBytes);
+        message.clearMessage();
+        setDescriptor.run();
+        if(headerLength == 0){
+            message.writeString(text);
+            message.format = MQConstants.MQFMT_STRING;
+            return;
+        }
+        message.write(headerBytes);
+        message.write(text.getBytes(DataCharset(message, headers)));
+    }
+
     /** Character set of the data after the headers: the last one a header gives, otherwise the MQMD one. */
     public static Charset DataCharset(MQMessage message, List<MQHeader> headers){
         int ccsid = message.characterSet;

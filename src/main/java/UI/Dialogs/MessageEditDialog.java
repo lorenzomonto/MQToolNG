@@ -375,12 +375,15 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     
     private void updateMessageObject(){
         try {
+            String text = payloadToSend(ContentEditorPane.getText());
             if(isNew == false){
-                message.clearMessage();
-                setMessageMQMD(message);
+                // The headers (DLH, RFH2...) are kept: only the data is replaced
+                MQUtility.ReplaceText(message, text, () -> setMessageMQMD(message));
             }
-            message.writeString(payloadToSend(ContentEditorPane.getText()));
-            message.format = "MQSTR";
+            else{
+                message.writeString(text);
+                message.format = "MQSTR";
+            }
         } catch (IOException ex) {
             Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
         }
