@@ -30,6 +30,8 @@ public class HelpDialog extends javax.swing.JDialog {
                       "<p>Written in Java 21 and using the IBM MQ client 9.4. Released under the GNU General Public License v3.0.</p>" +
                       "<p>Please report bugs and suggestions at " +
                         "<a href='" + UI.AppInfo.REPOSITORY_URL + "/issues'>" + UI.AppInfo.REPOSITORY_URL + "/issues</a></p>" +
+                      "<p>If MQToolNG is useful to you, you can support its development with a donation: " +
+                        "<a href='" + UI.AppInfo.DONATE_URL + "'>" + UI.AppInfo.DONATE_URL.replace("https://www.", "") + "</a></p>" +
                       "<p>Icons from Lucide <a href=\"https://lucide.dev/\">https://lucide.dev/</a></p>" +
                       "<p>Known issues :\n" +
                         "<ul>" +

@@ -96,6 +96,11 @@ QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi
 - PCF replies are read with client read ahead (`MQApi/PCF/ReadAheadPCFMessageAgent`).
 - Background tasks apply their results on the Swing event thread (`UI/Helpers/SwingThread`).
 
+## Support the project
+
+MQToolNG is free. If it is useful to you, you can support its development with a donation on
+[PayPal](https://www.paypal.me/LorenzoMontoro).
+
 ## License
 
 MQToolNG is free software: you can redistribute it and/or modify it under the terms of the
