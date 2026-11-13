@@ -47,6 +47,8 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     String queueName;
     MQMessage message;
     String content = null;
+    // Decoded binary data (PCF): shown as text, but it cannot be sent back as text
+    boolean readOnlyContent;
     // Payload as read from the queue, when it is compact XML shown indented: sent back compact
     private String compactOriginal = null;
     // Whole message (headers included) in hexadecimal, for the "Hex" view
@@ -194,8 +196,18 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         }
 
        
+        readOnlyContent = false;
+        String pcf = asEBCDIC ? null : MQUtility.DecodePcf(message);
+        if(pcf != null){
+            content = pcf;
+            readOnlyContent = true;
+        }
+
         compactOriginal = null;
-        if(XMLHelper.IsXML(content)){
+        if(readOnlyContent){
+            showContent(0, "Text");
+        }
+        else if(XMLHelper.IsXML(content)){
             // Compact XML is indented for reading and sent back compact; XML that already has its
             // own layout is shown as it is
             if(UI.Misc.XmlSyntax.IsCompact(content)){
@@ -221,9 +233,9 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     private void showHex(boolean hex){
         this.ContentEditorPane.setContentType("Text");
         this.ContentEditorPane.setText(hex ? hexDump : content);
-        this.ContentEditorPane.setEditable(!hex);
+        this.ContentEditorPane.setEditable(!hex && !readOnlyContent);
         this.ContentEditorPane.setCaretPosition(0);
-        this.UpdateButton.setEnabled(!hex);
+        this.UpdateButton.setEnabled(!hex && !readOnlyContent);
     }
 
     // Says why the data may include header bytes, with the first bytes of the message to find out more
@@ -250,6 +262,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         else{
             this.ContentEditorPane.setContentType(contentType);
             this.ContentEditorPane.setText(content);
+            this.ContentEditorPane.setEditable(!readOnlyContent);
         }
     }
     
@@ -398,7 +411,7 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     }
     
     private void finishLoading(boolean fireEvent){
-        this.UpdateButton.setEnabled(!isHexView());
+        this.UpdateButton.setEnabled(!isHexView() && !readOnlyContent);
         this.ProgressBar.setVisible(false);
         this.StatusLabel.setVisible(false);
         this.KeepPositionCheckBox.setEnabled(true);

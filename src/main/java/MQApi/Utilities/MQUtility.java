@@ -31,6 +31,8 @@ import com.ibm.mq.headers.MQHeaderIterator;
 import com.ibm.mq.headers.MQHeaderList;
 import com.ibm.mq.headers.MQRFH2;
 import com.ibm.mq.headers.internal.Header;
+import com.ibm.mq.headers.pcf.PCFMessage;
+import com.ibm.mq.headers.pcf.PCFParameter;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
@@ -52,6 +54,7 @@ import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -1026,6 +1029,14 @@ public class MQUtility {
     public static class MessageHeaders {
         public final List<MQHeader> Headers = new ArrayList<>();
         public String Problem;
+        /** Format and encoding of the data after the headers. */
+        public String DataFormat;
+        public int DataEncoding;
+    }
+
+    /** PCF commands, responses and events: binary data, decoded by DecodePcf. */
+    public static boolean IsPcfFormat(String format){
+        return MQConstants.MQFMT_ADMIN.equals(format) || MQConstants.MQFMT_EVENT.equals(format) || MQConstants.MQFMT_PCF.equals(format);
     }
 
     /**
@@ -1040,6 +1051,8 @@ public class MQUtility {
 
     public static MessageHeaders ParseHeaders(MQMessage message){
         MessageHeaders result = new MessageHeaders();
+        result.DataFormat = message.format;
+        result.DataEncoding = message.encoding;
         int dataOffset = 0;
         try {
             message.seek(0);
@@ -1054,6 +1067,8 @@ public class MQUtility {
                 if(dlh != null){
                     result.Headers.add(dlh);
                     dataOffset = dlh.size();
+                    result.DataFormat = dlh.getFormat();
+                    result.DataEncoding = dlh.getEncoding();
                     iterator = new MQHeaderIterator(new DataInputStream(new ByteArrayInputStream(bytes, dataOffset, bytes.length - dataOffset)),
                             dlh.getFormat(), dlh.getEncoding(), dlh.getCodedCharSetId());
                 }
@@ -1061,10 +1076,15 @@ public class MQUtility {
                     message.seek(0);
                 }
             }
-            while(iterator.hasNext()){
+            // PCF data is not a header: the iterator would read its parameters as headers and leave no data
+            while(!IsPcfFormat(result.DataFormat) && iterator.hasNext()){
                 MQHeader header = iterator.nextHeader();
                 result.Headers.add(header);
                 dataOffset += header.size();
+                if(header instanceof MQChainable){
+                    result.DataFormat = ((MQChainable) header).nextFormat();
+                    result.DataEncoding = ((MQChainable) header).nextEncoding();
+                }
             }
         } catch (IOException | RuntimeException ex) {
             Throwable cause = ex;
@@ -1159,6 +1179,11 @@ public class MQUtility {
 
     /** The data column of the message list: the start of the text, or of the bytes for binary data. */
     private static String listPreview(MQMessage message){
+        String pcf = DecodePcf(message);
+        if(pcf != null){
+            // The first line: type and command
+            return "PCF " + pcf.substring(0, pcf.indexOf('\n'));
+        }
         String text = GetMessageStringContent(message, 4096);
         if(IsBinary(text)){
             ReadHeaders(message);
@@ -1172,6 +1197,76 @@ public class MQUtility {
         }
         String start = text.stripLeading();
         return start.length() > messageListDataLength ? start.substring(0, messageListDataLength) : start;
+    }
+
+    /**
+     * PCF data (command, response or event, also behind a DLH) as text, one parameter per line with
+     * the names of the MQ constants. Null when the data is not PCF or cannot be read as PCF.
+     */
+    public static String DecodePcf(MQMessage message){
+        MessageHeaders headers = ParseHeaders(message);
+        if(!IsPcfFormat(headers.DataFormat)){
+            return null;
+        }
+        try{
+            byte[] bytes = new byte[message.getDataLength()];
+            message.readFully(bytes);
+            // Read with the encoding of the data: the MQMD one may describe a header before it
+            MQMessage data = new MQMessage();
+            data.encoding = headers.DataEncoding;
+            data.write(bytes);
+            data.seek(0);
+            PCFMessage pcf = new PCFMessage(data);
+            StringBuilder text = new StringBuilder();
+            text.append(constantName(pcf.getType(), "MQCFT_.*")).append("  ").append(constantName(pcf.getCommand(), "MQCMD_.*")).append('\n');
+            text.append("Completion ").append(MQConstants.lookupCompCode(pcf.getCompCode()))
+                    .append(", reason ").append(MQConstants.lookupReasonCode(pcf.getReason())).append(" (").append(pcf.getReason()).append(")\n");
+            text.append("Message sequence ").append(pcf.getMsgSeqNumber()).append(pcf.getControl() == MQConstants.MQCFC_LAST ? ", last" : ", not last").append("\n\n");
+            Enumeration<?> parameters = pcf.getParameters();
+            while(parameters.hasMoreElements()){
+                PCFParameter parameter = (PCFParameter) parameters.nextElement();
+                String name = parameter.getParameterName();
+                text.append(String.format("%-36s ", name != null ? name : String.valueOf(parameter.getParameter())))
+                        .append(pcfValue(parameter)).append('\n');
+            }
+            return text.toString();
+        }catch(IOException | MQDataException | RuntimeException ex){
+            LogWriter.WriteToLog("MQUtility", "DecodePcf", ex);
+            return null;
+        }finally{
+            ReadHeaders(message);
+        }
+    }
+
+    private static String constantName(int value, String pattern){
+        String name = MQConstants.lookup(value, pattern);
+        return name != null ? name : String.valueOf(value);
+    }
+
+    // Values of constants by name (e.g. MQQT_LOCAL), strings without the padding, lists in brackets
+    private static String pcfValue(PCFParameter parameter){
+        Object value = parameter.getValue();
+        if(value instanceof String){
+            return ((String) value).trim();
+        }
+        if(value instanceof String[]){
+            List<String> items = new ArrayList<>();
+            for(String item : (String[]) value){
+                items.add(item.trim());
+            }
+            return items.toString();
+        }
+        if(value instanceof byte[]){
+            return BytesToHex((byte[]) value);
+        }
+        if(value instanceof int[]){
+            return java.util.Arrays.toString((int[]) value);
+        }
+        if(value instanceof long[]){
+            return java.util.Arrays.toString((long[]) value);
+        }
+        String decoded = parameter.decodeValue();
+        return decoded != null && !decoded.isEmpty() ? decoded : String.valueOf(value);
     }
 
     /** The first bytes of the message in hexadecimal, to show what it contains when it cannot be read. */
