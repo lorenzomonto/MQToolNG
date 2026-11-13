@@ -126,6 +126,27 @@ public class MainWindow extends javax.swing.JFrame {
     private final UI.Dialogs.TlsSettingsPanel tlsSettingsPanel = new UI.Dialogs.TlsSettingsPanel();
     // For queue managers that do not check the password of the user: it is never asked
     private final javax.swing.JCheckBox NoPasswordCheckBox = new javax.swing.JCheckBox("No password: send only the user");
+    // Connect directly, or through a queue manager already configured (like MQ Explorer)
+    private final javax.swing.JComboBox<ViaChoice> ViaComboBox = new javax.swing.JComboBox<>();
+    private final javax.swing.JLabel ViaHintLabel = new javax.swing.JLabel();
+    // Rows of the dialog for the direct connection settings, hidden when connecting through another queue manager
+    private final java.util.List<java.awt.Component> directConnectionRows = new ArrayList<>();
+    private final java.util.List<java.awt.Component> viaRows = new ArrayList<>();
+
+    /** An entry of the Connect list: directly (no connection) or through a direct connection. */
+    private static class ViaChoice {
+        final ConnectionDetailModel Connection;
+
+        ViaChoice(ConnectionDetailModel connection){
+            Connection = connection;
+        }
+
+        @Override
+        public String toString(){
+            return Connection == null ? "Directly"
+                    : "Through " + Connection.QueueManager + " (" + Connection.Host + ":" + Connection.Port + ")";
+        }
+    }
     // Queue manager page, shown in place of the table when a queue manager is selected
     // Shown at the top of the window when a new version is available
     private final UI.Misc.UpdateBanner updateBanner = new UI.Misc.UpdateBanner(version -> {
@@ -872,6 +893,8 @@ public class MainWindow extends javax.swing.JFrame {
         return popup;
     } 
         
+    private static final String REMOTE_MESSAGES_TIP = "Not available through an intermediate queue manager: MQ can read only the queues of the queue manager it is connected to";
+
     private JPopupMenu getQueueListTablePopupMenu(Object type){
         if(type instanceof QueueType){
             QueueType queueType = (QueueType)type;
@@ -937,6 +960,13 @@ public class MainWindow extends javax.swing.JFrame {
                     showStatusDialog(StatusType.QueueStatus);
                 }
             });
+            if(MQConnection.IsRemote(TreeHelper.GetCurrentSelectedQueueManager(TreeView))){
+                // MQ opens the queues of another queue manager only to put messages
+                for(JMenuItem item : new JMenuItem[]{browseMsgMenuItem, saveMessageContentMenuItem, backupMessageMenuItem, restoreMessageMenuItem}){
+                    item.setEnabled(false);
+                    item.setToolTipText(REMOTE_MESSAGES_TIP);
+                }
+            }
             switch(queueType){
                 case Local:                   
                     popup.add(putMenuItem);
@@ -1250,7 +1280,7 @@ public class MainWindow extends javax.swing.JFrame {
         TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
         String name = nodeObject.ConnectionDetail.QueueManager;
         if(!nodeObject.IsConnected()){
-            overviewPanel.ShowNotConnected(name, nodeObject.ConnectionDetail.Host + ":" + nodeObject.ConnectionDetail.Port);
+            overviewPanel.ShowNotConnected(name, nodeObject.ConnectionDetail.Address());
             return;
         }
         overviewPanel.ShowLoading(name);
@@ -1320,11 +1350,20 @@ public class MainWindow extends javax.swing.JFrame {
         }
 
         @Override
+        public boolean CanBrowseMessages() {
+            return overviewNode == null || !MQConnection.IsRemote(((TreeNodeObject) overviewNode.getUserObject()).QueueManager);
+        }
+
+        @Override
         public void BrowseQueue(String queueName) {
             if(overviewNode == null){
                 return;
             }
             TreeNodeObject nodeObject = (TreeNodeObject) overviewNode.getUserObject();
+            if(MQConnection.IsRemote(nodeObject.QueueManager)){
+                JOptionPane.showMessageDialog(MainWindow.this, REMOTE_MESSAGES_TIP + ".", "Browse messages", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
             TableListObject queue = new TableListObject();
             queue.ObjectName = queueName;
             queue.TableType = MQApi.Enums.TableContentType.QueueList;
@@ -1378,10 +1417,13 @@ public class MainWindow extends javax.swing.JFrame {
         catch (Exception ex){
            connection.Port = "1414"; 
         }
-        connection.QueueManager = this.QueueManagerTextBox.getText();  
+        connection.QueueManager = this.QueueManagerTextBox.getText();
         connection.User = this.UserTextBox.getText();
         savePassword(connection);
         tlsSettingsPanel.Save(connection);
+        if(selectedVia() != null){
+            connection.ConnectThrough(selectedVia());
+        }
         return connection;
     }    
     
@@ -1401,6 +1443,7 @@ public class MainWindow extends javax.swing.JFrame {
            this.PasswordTextBox.setText(model.Password);
            setNoPassword(model.IsNoPassword());
            tlsSettingsPanel.Load(model);
+           fillViaChoices(model);
            showConnectionDetailDialog("Edit queue manager");
         }
     }
@@ -2078,13 +2121,30 @@ public class MainWindow extends javax.swing.JFrame {
         }
         else{
             ConnectionDetailModel model = TreeHelper.GetCurrentSelectedConnectionDetail(TreeView);
-            model.Channel = this.ChannelTextBox.getText();
-            model.Host = this.HostTextBox.getText();
-            model.Port = this.PortTextBox.getText();
+            // The queue managers administered through this one, to give them its new settings
+            java.util.List<ConnectionDetailModel> throughThis = new ArrayList<>();
+            for(ConnectionDetailModel other : ConnectionDetailModels){
+                if(other.IsThrough(model)){
+                    throughThis.add(other);
+                }
+            }
+            ConnectionDetailModel via = selectedVia();
             model.QueueManager = this.QueueManagerTextBox.getText();
-            model.User = this.UserTextBox.getText();
-            savePassword(model);
-            tlsSettingsPanel.Save(model);
+            if(via != null){
+                model.ConnectThrough(via);
+            }
+            else{
+                model.ViaQueueManager = null;
+                model.Channel = this.ChannelTextBox.getText();
+                model.Host = this.HostTextBox.getText();
+                model.Port = this.PortTextBox.getText();
+                model.User = this.UserTextBox.getText();
+                savePassword(model);
+                tlsSettingsPanel.Save(model);
+                for(ConnectionDetailModel other : throughThis){
+                    other.ConnectThrough(model);
+                }
+            }
             TreeHelper.RefreshTreeView(TreeView, model);
         }
         XMLHelper.WriteConnectionModelToXml(ConnectionDetailModels, SettingFilePath);
@@ -2239,6 +2299,7 @@ public class MainWindow extends javax.swing.JFrame {
 
     private void addQueueManageMenuItemActionPerformed(java.awt.event.ActionEvent evt){
         tlsSettingsPanel.Load(null);
+        fillViaChoices(null);
         showConnectionDetailDialog("Add queue manager");
     }
 
@@ -2246,7 +2307,19 @@ public class MainWindow extends javax.swing.JFrame {
     private boolean isConnectionDetailValid(){
         String problem = null;
         javax.swing.JComponent field = null;
-        if(HostTextBox.getText().trim().isEmpty()){
+        ConnectionDetailModel via = selectedVia();
+        if(via != null){
+            // The connection settings are those of the intermediate queue manager
+            if(QueueManagerTextBox.getText().trim().isEmpty()){
+                problem = "Enter the name of the queue manager to administer through " + via.QueueManager + ".";
+                field = QueueManagerTextBox;
+            }
+            else if(QueueManagerTextBox.getText().trim().equals(via.QueueManager.trim())){
+                problem = "This is the queue manager connected to: choose another one, or connect directly.";
+                field = QueueManagerTextBox;
+            }
+        }
+        else if(HostTextBox.getText().trim().isEmpty()){
             problem = "Enter the host of the queue manager.";
             field = HostTextBox;
         }
@@ -2285,8 +2358,12 @@ public class MainWindow extends javax.swing.JFrame {
 
     private void setupConnectionDetailDialog(){
         // Connection fields and TLS section in the same two columns (labels, fields), buttons below
-        javax.swing.JLabel[] labels = {jLabel1, jLabel2, jLabel3, jLabel4, jLabel6, jLabel7, new javax.swing.JLabel()};
-        javax.swing.JComponent[] inputs = {HostTextBox, QueueManagerTextBox, ChannelTextBox, PortTextBox, UserTextBox, PasswordTextBox, NoPasswordCheckBox};
+        javax.swing.JLabel[] labels = {new javax.swing.JLabel("Connect:"), jLabel1, jLabel2, new javax.swing.JLabel(), jLabel3, jLabel4, jLabel6, jLabel7, new javax.swing.JLabel()};
+        javax.swing.JComponent[] inputs = {ViaComboBox, HostTextBox, QueueManagerTextBox, ViaHintLabel, ChannelTextBox, PortTextBox, UserTextBox, PasswordTextBox, NoPasswordCheckBox};
+        ViaComboBox.setToolTipText("<html>Through a queue manager: the commands reach this queue manager through the channels of the<br>"
+                + "one already configured, as in MQ Explorer. Messages can be put but not browsed.</html>");
+        ViaComboBox.addActionListener(e -> updateViaRows());
+        ViaHintLabel.putClientProperty(FlatClientProperties.STYLE, "foreground: $Label.disabledForeground");
         NoPasswordCheckBox.setToolTipText("<html>For queue managers that do not check the password (CHCKCLNT OPTIONAL or NONE):<br>"
                 + "the user is sent without password and no password is asked when connecting</html>");
         NoPasswordCheckBox.addActionListener(e -> setNoPassword(NoPasswordCheckBox.isSelected()));
@@ -2308,10 +2385,22 @@ public class MainWindow extends javax.swing.JFrame {
             c.weightx = 1;
             c.fill = java.awt.GridBagConstraints.HORIZONTAL;
             c.insets = new java.awt.Insets(3, 0, 3, 0);
-            inputs[i].setPreferredSize(null);
-            inputs[i].setPreferredSize(new Dimension(360, inputs[i].getPreferredSize().height));
+            if(inputs[i] != ViaHintLabel){
+                // The hint wraps: its height follows its text
+                inputs[i].setPreferredSize(null);
+                inputs[i].setPreferredSize(new Dimension(360, inputs[i].getPreferredSize().height));
+            }
             fields.add(inputs[i], c);
+            if(inputs[i] == ViaHintLabel){
+                viaRows.add(labels[i]);
+                viaRows.add(inputs[i]);
+            }
+            else if(inputs[i] != ViaComboBox && inputs[i] != QueueManagerTextBox){
+                directConnectionRows.add(labels[i]);
+                directConnectionRows.add(inputs[i]);
+            }
         }
+        directConnectionRows.add(tlsSettingsPanel);
         JButton ok = new JButton("OK");
         ok.addActionListener(e -> AddtButtonActionPerformed(e));
         JButton cancel = new JButton("Cancel");
@@ -2329,6 +2418,54 @@ public class MainWindow extends javax.swing.JFrame {
         // Esc cancels, like the Cancel button
         ConnectionDetailDialog.getRootPane().registerKeyboardAction(e -> CancelBittonActionPerformed(e),
                 javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
+    }
+
+    // The Connect choices: directly, or through each direct connection (not the one edited)
+    private void fillViaChoices(ConnectionDetailModel editing){
+        ViaComboBox.removeAllItems();
+        ViaComboBox.addItem(new ViaChoice(null));
+        ViaChoice selected = null;
+        for(ConnectionDetailModel connection : ConnectionDetailModels){
+            if(connection == editing || connection.IsRemote()){
+                continue;
+            }
+            ViaChoice choice = new ViaChoice(connection);
+            ViaComboBox.addItem(choice);
+            if(editing != null && editing.IsThrough(connection) && selected == null){
+                selected = choice;
+            }
+        }
+        if(editing != null && editing.IsRemote() && selected == null){
+            // Its intermediate connection was deleted or changed: the settings copied in it still work
+            selected = new ViaChoice(editing.ViaConnection());
+            ViaComboBox.addItem(selected);
+        }
+        ViaComboBox.setSelectedItem(selected != null ? selected : ViaComboBox.getItemAt(0));
+        updateViaRows();
+    }
+
+    private ConnectionDetailModel selectedVia(){
+        ViaChoice choice = (ViaChoice) ViaComboBox.getSelectedItem();
+        return choice != null ? choice.Connection : null;
+    }
+
+    // Through another queue manager its host, channel, user and TLS are used: their fields are hidden
+    private void updateViaRows(){
+        ConnectionDetailModel via = selectedVia();
+        for(java.awt.Component row : directConnectionRows){
+            row.setVisible(via == null);
+        }
+        for(java.awt.Component row : viaRows){
+            row.setVisible(via != null);
+        }
+        if(via != null){
+            ViaHintLabel.setText("<html><body style='width: 300px'>The client connects to " + via.QueueManager + " with its settings (host, channel, user, TLS)."
+                    + " The commands reach this queue manager through the channels of " + via.QueueManager
+                    + ", which must run in both directions. Messages can be put but not browsed.</body></html>");
+        }
+        if(ConnectionDetailDialog.isVisible()){
+            ConnectionDetailDialog.pack();
+        }
     }
 
     private void setNoPassword(boolean noPassword){

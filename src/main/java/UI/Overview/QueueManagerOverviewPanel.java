@@ -49,6 +49,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         void Connect();
         void ShowQueue(String queueName);
         void BrowseQueue(String queueName);
+        /** False for a queue manager administered through another one: its messages cannot be read. */
+        boolean CanBrowseMessages();
     }
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -337,7 +339,7 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
             case SHOW_QUEUE:
                 return Widgets.Link("Show queue", () -> actions.ShowQueue(check.Target));
             case BROWSE_QUEUE:
-                return Widgets.Link("Browse messages", () -> actions.BrowseQueue(check.Target));
+                return actions.CanBrowseMessages() ? Widgets.Link("Browse messages", () -> actions.BrowseQueue(check.Target)) : null;
             default:
                 return null;
         }

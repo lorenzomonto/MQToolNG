@@ -221,7 +221,7 @@ public class MQPCF {
             PCFMessage pcfCmd = new PCFMessage(MQConstants.MQCMD_CLEAR_Q);
             pcfCmd.addParameter(MQConstants.MQCA_Q_NAME, queueName);
             PCFMessage[] pcfResponse = agent.send(pcfCmd);
-            LogWriter.WriteActivityToLog("MQPCF (ClearQueue) : Removed " + numMsgsToClear + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+            LogWriter.WriteActivityToLog("MQPCF (ClearQueue) : Removed " + numMsgsToClear + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
             assignCommandReturnResult(pcfResponse[0], result);
         } catch (MQDataException ex) {
             LogWriter.WriteToLog("MQPCF", "ClearQueue", ex);
@@ -1120,12 +1120,27 @@ public class MQPCF {
         }
     }
 
+    /**
+     * Pings the remote queue manager administered through this connection, waiting at most the given
+     * seconds for its answer: it fails when the channels or its command server do not work.
+     */
+    public static void PingRemote(MQQueueManager queueManager, int seconds) throws MQDataException, IOException{
+        PCFMessageAgent agent = createPCFMessageAgent(queueManager);
+        try {
+            agent.setWaitInterval(seconds);
+            agent.send(new PCFMessage(MQConstants.MQCMD_PING_Q_MGR));
+        } finally {
+            agent.disconnect();
+        }
+    }
+
     private static PCFMessageAgent getPCFMessageAgent(MQQueueManager queueManager) throws MQDataException{
         return PCFAgentPool.Acquire(queueManager, MQPCF::createPCFMessageAgent);
     }
 
     private static PCFMessageAgent createPCFMessageAgent(MQQueueManager queueManager) throws MQDataException{
-        PCFMessageAgent agent = new ReadAheadPCFMessageAgent();
+        // For a remote queue manager the commands go through this connection to its command queue
+        PCFMessageAgent agent = new ReadAheadPCFMessageAgent(MQConnection.RemoteTarget(queueManager));
         MQQueue defaultModelQueue = null;
         
         try{

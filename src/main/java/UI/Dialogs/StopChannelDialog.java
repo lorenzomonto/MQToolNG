@@ -40,7 +40,7 @@ public class StopChannelDialog extends DialogBase {
         this.setIconImage(iconManager.StopIcon().getImage());   
         String queueManagerName = "";
         try {
-            queueManagerName = queueManager.getName();
+            queueManagerName = MQApi.Connection.MQConnection.QueueManagerName(queueManager);
         } catch (MQException ex) {
             //LogWriter.WriteToLog(ex.getMessage(), LogType.Error);
             Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex);

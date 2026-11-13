@@ -29,6 +29,9 @@ public class TreeNodeObject {
     }
     @Override
     public String toString() {
+        if(Type == TreeNodeObjectType.QueueManager && ConnectionDetail != null && ConnectionDetail.IsRemote()){
+            return this.Name +" (via "+ ConnectionDetail.ViaQueueManager.trim() + ")";
+        }
         if(Type == TreeNodeObjectType.QueueManager && ConnectionDetail != null){
             return this.Name +" ("+ ConnectionDetail.Host + ":" +ConnectionDetail.Port +")";
         }

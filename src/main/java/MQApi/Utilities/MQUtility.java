@@ -76,7 +76,8 @@ public class MQUtility {
     public static boolean PutMessage(MQQueueManager queueManager, String queueName, MQMessage message){    
         MQQueue queue = null;
         try {
-            queue = queueManager.accessQueue(queueName, CMQC.MQOO_OUTPUT);
+            // On a remote queue manager the message goes there through the channels of the connected one
+            queue = queueManager.accessQueue(queueName, CMQC.MQOO_OUTPUT, MQConnection.IsRemote(queueManager) ? MQConnection.RemoteTarget(queueManager) : "", null, null);
             queue.put(message);
             closeQueue(queue);
         } catch (Exception ex) {
@@ -347,7 +348,7 @@ public class MQUtility {
                 }
                 if(thread1Finish.IsFinish && thread2Finish.IsFinish && thread3Finish.IsFinish && thread4Finish.IsFinish){
                     progressBar.setValue(100);
-                    LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessagesMultiThread) : Removed " + processed.MessageDeleted + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+                    LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessagesMultiThread) : Removed " + processed.MessageDeleted + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
                     break;
                 }
             }
@@ -404,13 +405,13 @@ public class MQUtility {
                 queue.setInhibitGet(MQConstants.MQQA_GET_INHIBITED);
             }
             closeQueue(queue);
-            LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+            LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
             if(progressBar != null){
                 progressBar.setValue(100);
             }
         } catch (MQException ex) {
             LogWriter.WriteToLog("MQUtility", "ComsumeAllMessages",ex);
-            LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+            LogWriter.WriteActivityToLog("MQUtility (ComsumeAllMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
             closeQueue(queue);
             throw ex;
         }
@@ -464,7 +465,7 @@ public class MQUtility {
         if(progressBar != null){
             progressBar.setValue(100);
         }
-        LogWriter.WriteToLog("MQUtility (ComsumeAllMessagesWithFilter) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+        LogWriter.WriteToLog("MQUtility (ComsumeAllMessagesWithFilter) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
     }    
     public static void ComsumeSelectedMessages(MQQueueManager queueManager, String queueName, MQMessageIdModel id) throws MQException{
         ArrayList<MQMessageIdModel> ids = new ArrayList<MQMessageIdModel>();
@@ -516,11 +517,11 @@ public class MQUtility {
             closeQueue(queue);
             if(progressBar != null){
                 progressBar.setValue(100);
-                LogWriter.WriteActivityToLog("MQUtility (ComsumeSelectedMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+                LogWriter.WriteActivityToLog("MQUtility (ComsumeSelectedMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
             }
         } catch (MQException ex) {
             LogWriter.WriteToLog("MQUtility", "ComsumeSelectedMessages",ex);
-            LogWriter.WriteActivityToLog("MQUtility (ComsumeSelectedMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + queueManager.getName() + ")");
+            LogWriter.WriteActivityToLog("MQUtility (ComsumeSelectedMessages) : Removed " + removedMsgCount + " msgs from " + queueName + "(" + MQApi.Connection.MQConnection.QueueManagerName(queueManager) + ")");
             closeQueue(queue);
             throw ex;
         }

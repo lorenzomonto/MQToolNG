@@ -55,7 +55,7 @@ public class QueueMonitorDialog extends DialogBase {
         this.setIconImage(iconManager.MonitorIcon().getImage());
         String queueManagerName = "";
         try {
-            queueManagerName = queueManager.getName();
+            queueManagerName = MQApi.Connection.MQConnection.QueueManagerName(queueManager);
         } catch (MQException ex) {
             Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex);
         };

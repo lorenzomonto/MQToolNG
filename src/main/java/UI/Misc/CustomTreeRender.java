@@ -72,7 +72,7 @@ public class CustomTreeRender extends DefaultTreeCellRenderer {
         Color muted = selected && tree.isFocusOwner() && strongSelection(tree) ? getForeground() : UIManager.getColor("Label.disabledForeground");
         String hex = String.format("#%06x", muted.getRGB() & 0xFFFFFF);
         setText("<html>" + escape(nodeInfo.Name) + "&nbsp;&nbsp;<font color='" + hex + "'>"
-                + escape(nodeInfo.ConnectionDetail.Host + ":" + nodeInfo.ConnectionDetail.Port)
+                + escape(nodeInfo.ConnectionDetail.Address())
                 + (nodeInfo.ConnectionDetail.IsTlsEnabled() ? " · TLS" : "") + "</font></html>");
     }
 

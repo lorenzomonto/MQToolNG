@@ -31,7 +31,8 @@ public class PasswordPrompt {
         JPasswordField passwordField = new JPasswordField(24);
         JPanel panel = new JPanel(new BorderLayout(0, 8));
         JLabel info = new JLabel("<html>Password of user <b>" + escape(c.User) + "</b><br>for "
-                + escape(c.QueueManager) + " on " + escape(c.Host) + ":" + escape(c.Port) + "</html>");
+                + escape(c.ConnectedQueueManager()) + " on " + escape(c.Host) + ":" + escape(c.Port)
+                + (c.IsRemote() ? "<br>to administer " + escape(c.QueueManager) + " through it" : "") + "</html>");
         panel.add(info, BorderLayout.NORTH);
         panel.add(passwordField, BorderLayout.CENTER);
         JCheckBox saveCheckBox = new JCheckBox("Save password (encrypted for your Windows user)");

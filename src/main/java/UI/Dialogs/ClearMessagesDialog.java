@@ -206,7 +206,7 @@ public class ClearMessagesDialog extends DialogBase {
         this.setIconImage(iconManager.DeleteMessageIcon().getImage());   
         String queueManagerName = "";
         try {
-            queueManagerName = queueManager.getName();
+            queueManagerName = MQApi.Connection.MQConnection.QueueManagerName(queueManager);
         } catch (MQException ex) {
             //LogWriter.WriteToLog(ex.getMessage(), LogType.Error);
             Logger.getLogger(this.getClass().getName()).log(Level.SEVERE, null, ex);
@@ -216,8 +216,17 @@ public class ClearMessagesDialog extends DialogBase {
         this.StringFilterTextField.setVisible(false);
         this.StringFilterTextField.setText("");
         this.StringFilterLabel.setVisible(false);
+        if(MQApi.Connection.MQConnection.IsRemote(queueManager)){
+            // Getting the messages needs a direct connection: only the clear command reaches a remote queue manager
+            String tip = "Not available through an intermediate queue manager";
+            this.MQGETRadioButton.setEnabled(false);
+            this.MQGETRadioButton.setToolTipText(tip);
+            this.ForceRadioButton.setEnabled(false);
+            this.ForceRadioButton.setToolTipText(tip);
+            this.ClearCommandRadioButton.setSelected(true);
+        }
     }
-    
+
     private void CloseButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_CloseButtonActionPerformed
         Close();
     }//GEN-LAST:event_CloseButtonActionPerformed

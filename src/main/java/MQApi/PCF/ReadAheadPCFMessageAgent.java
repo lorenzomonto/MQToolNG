@@ -20,10 +20,25 @@ import com.ibm.mq.headers.pcf.PCFMessageAgent;
 public class ReadAheadPCFMessageAgent extends PCFMessageAgent {
 
     private static final String DEFAULT_MODEL_QUEUE = "SYSTEM.DEFAULT.MODEL.QUEUE";
+    private static final String REMOTE_COMMAND_QUEUE = "SYSTEM.ADMIN.COMMAND.QUEUE";
+
+    // Queue manager the commands are sent to through the connected one; null for the connected one
+    private final String remoteQueueManager;
+
+    public ReadAheadPCFMessageAgent() {
+        this(null);
+    }
+
+    public ReadAheadPCFMessageAgent(String remoteQueueManager) {
+        this.remoteQueueManager = remoteQueueManager;
+    }
 
     @Override
     protected synchronized void open(MQQueueManager queueManager, String modelQueue, String replyPrefix, boolean b) throws MQDataException {
         super.open(queueManager, modelQueue, replyPrefix, b);
+        if (remoteQueueManager != null) {
+            openRemoteCommandQueue(queueManager);
+        }
         MQQueue readAheadQueue;
         String readAheadQueueName;
         try {
@@ -46,6 +61,20 @@ public class ReadAheadPCFMessageAgent extends PCFMessageAgent {
             standardQueue.close();
         } catch (MQException ex) {
             LogWriter.WriteToLog("ReadAheadPCFMessageAgent", "open", ex);
+        }
+    }
+
+    // The commands go to the command queue of the remote queue manager, through the channels of the
+    // connected one; the replies come back to the reply queue opened here
+    private void openRemoteCommandQueue(MQQueueManager queueManager) throws MQDataException {
+        try {
+            MQQueue remoteQueue = queueManager.accessQueue(REMOTE_COMMAND_QUEUE,
+                    CMQC.MQOO_OUTPUT | CMQC.MQOO_FAIL_IF_QUIESCING, remoteQueueManager, null, null);
+            MQQueue localQueue = adminQueue;
+            adminQueue = remoteQueue;
+            localQueue.close();
+        } catch (MQException ex) {
+            throw MQDataException.getMQDataException(ex);
         }
     }
 }

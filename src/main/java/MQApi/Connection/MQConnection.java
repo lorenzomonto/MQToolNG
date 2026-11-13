@@ -15,7 +15,10 @@ import com.ibm.mq.MQQueue;
 import com.ibm.mq.MQQueueManager;
 import com.ibm.mq.constants.CMQC;
 import com.ibm.mq.constants.MQConstants;
+import java.util.Collections;
 import java.util.Hashtable;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.Properties;
 import javax.swing.JOptionPane;
 
@@ -56,7 +59,7 @@ public class MQConnection {
                 TlsSettings.Apply(connectionDetail, properties);
             }
             try{
-                queueManager = new MQQueueManager(connectionDetail.QueueManager, properties);
+                queueManager = new MQQueueManager(connectionDetail.ConnectedQueueManager(), properties);
             }catch(MQException ex){
                 // The security exit is for queue managers older than MQ 7, which do not support TLS here either.
                 // Retrying cannot help an unreachable host, and after a refused password it would count
@@ -68,7 +71,12 @@ public class MQConnection {
                     throw ex;
                 }
                 properties.put("securityExit", new SecurityExit(null, null)); //for MQ ver < 7
-                queueManager = new MQQueueManager(connectionDetail.QueueManager, properties);
+                queueManager = new MQQueueManager(connectionDetail.ConnectedQueueManager(), properties);
+            }
+            if(connectionDetail.IsRemote()){
+                remoteTargets.put(queueManager, connectionDetail.QueueManager.trim());
+                checkRemoteAnswers(queueManager, connectionDetail);
+                return queueManager;
             }
             MQQueue commandQueue = queueManager.accessQueue(queueManager.getCommandInputQueueName(), CMQC.MQOO_INQUIRE);
             try{
@@ -91,6 +99,54 @@ public class MQConnection {
             throw ex;
         }
     }   
+
+    // Connections to an intermediate queue manager that administer another one, with its name
+    private static final Map<MQQueueManager, String> remoteTargets = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final int REMOTE_CHECK_SECONDS = 20;
+
+    /** The queue manager administered through this connection: another one when it is remote. */
+    public static String QueueManagerName(MQQueueManager queueManager) throws MQException{
+        String target = RemoteTarget(queueManager);
+        return target != null ? target : queueManager.getName();
+    }
+
+    /** Name of the queue manager administered through this connection to an intermediate one; null for a direct connection. */
+    public static String RemoteTarget(MQQueueManager queueManager){
+        return queueManager == null ? null : remoteTargets.get(queueManager);
+    }
+
+    public static boolean IsRemote(MQQueueManager queueManager){
+        return RemoteTarget(queueManager) != null;
+    }
+
+    // The connection is only useful if the remote command server answers: says what to check when it does not
+    private static void checkRemoteAnswers(MQQueueManager queueManager, ConnectionDetailModel connectionDetail) throws MQException{
+        String target = connectionDetail.QueueManager.trim();
+        String via = connectionDetail.ConnectedQueueManager();
+        try{
+            MQApi.PCF.MQPCF.PingRemote(queueManager, REMOTE_CHECK_SECONDS);
+        }catch(Exception ex){
+            LogWriter.WriteToLog("MQConnection", "checkRemoteAnswers", ex);
+            // The first MQ reason code in the chain (the PCF agent wraps them in MQDataException)
+            int reason = MQConstants.MQRC_NO_MSG_AVAILABLE;
+            for(Throwable cause = ex; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()){
+                if(cause instanceof MQException){
+                    reason = ((MQException) cause).getReason();
+                    break;
+                }
+                if(cause instanceof com.ibm.mq.headers.MQDataException){
+                    reason = ((com.ibm.mq.headers.MQDataException) cause).getReason();
+                    break;
+                }
+            }
+            String detail = reason == MQConstants.MQRC_NO_MSG_AVAILABLE
+                    ? "no answer within " + REMOTE_CHECK_SECONDS + " seconds."
+                    : MQApi.Utilities.MQUtility.getMQReturnMessage(MQConstants.MQCC_FAILED, reason);
+            throw new MQException(MQConstants.MQCC_FAILED, reason, target + " does not answer through " + via + ": " + detail
+                    + "\nCheck that " + via + " has a transmission queue or route to " + target + ", that the channels between them"
+                    + " are running in both directions and that the command server of " + target + " is running.");
+        }
+    }
 
     public static void DisconnectMQQueueManager(MQQueueManager queueManager){
         if(queueManager == null){

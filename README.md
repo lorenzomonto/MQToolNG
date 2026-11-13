@@ -17,6 +17,8 @@ Modified in November 2026:
 - The name filter matches the names that contain the text, ignoring case.
 - Connection passwords are encrypted with Windows DPAPI, or asked when connecting instead of being saved.
 - TLS for the connections (optional), and fixes for XML external entities and backup file deserialization.
+- Queue managers administered through another one, like MQ Explorer (Connect: Through ...): the commands
+  reach them through the channels of the queue manager connected to. Messages can be put but not browsed.
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
