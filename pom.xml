@@ -6,7 +6,7 @@
 
     <groupId>io.github.lorenzomonto</groupId>
     <artifactId>mqtoolng</artifactId>
-    <version>1.4.5</version>
+    <version>1.5.0</version>
     <packaging>jar</packaging>
     <name>MQToolNG</name>
     <description>A Java GUI application for managing IBM MQ objects and messages</description>
