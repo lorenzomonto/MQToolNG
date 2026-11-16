@@ -31,7 +31,7 @@ import javax.swing.tree.DefaultTreeCellRenderer;
 
 /**
  * Rows of the queue manager list: section headers, one row per queue manager (status dot, name,
- * address or last connection error) and the object folders. Counts, badges and the quick actions on
+ * address or last connection error) and the object folders. The version and the quick actions on
  * the right side are painted by {@link QueueManagerTreeLayer}.
  *
  * @author jzhou
@@ -39,7 +39,6 @@ import javax.swing.tree.DefaultTreeCellRenderer;
 public class CustomTreeRender extends DefaultTreeCellRenderer {
     public static final Color GREEN = new Color(0x22A06B);
     public static final Color RED = new Color(0xE5484D);
-    public static final Color ORANGE = new Color(0xE8833A);
     static final int ROW_HEIGHT = 26;
     private static final int SECTION_HEIGHT = 30;
 

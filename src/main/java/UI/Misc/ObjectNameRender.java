@@ -8,11 +8,15 @@ import MQApi.QueryModel.MQQueueListResult.QueueDetailModel;
 import UI.Helpers.IconManager;
 import UI.Helpers.SelectionStyle;
 import UI.Models.TableListObject;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Path2D;
 import javax.swing.Icon;
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -21,7 +25,7 @@ import javax.swing.table.DefaultTableCellRenderer;
  * Name column of the queue and channel lists, with an icon left of the name:
  * queues: an icon colored by queue type (local, alias, remote, model, transmission, temporary);
  * channels: a neutral icon for the channel type with a dot for its status
- * (green running, amber starting or retrying, red stopped, gray inactive).
+ * (green running, amber starting, red stopped, gray inactive); a yellow warning triangle when retrying.
  * Colors have one meaning per list: the type for queues, the status for channels.
  */
 public class ObjectNameRender extends DefaultTableCellRenderer {
@@ -29,6 +33,7 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
     private static final Color BLUE = new Color(0x2F6FED);
     private static final Color GREEN = new Color(0x22A06B);
     private static final Color AMBER = new Color(0xE8833A);
+    private static final Color YELLOW = new Color(0xF5B800);
     private static final Color RED = new Color(0xE5484D);
     private static final Color PURPLE = new Color(0x8E6CEF);
     private static final Color TEAL = new Color(0x1A9FB0);
@@ -98,7 +103,7 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
         }
     }
 
-    /** Running green, starting or retrying amber, stopped red, no status gray. */
+    /** Running green, retrying yellow, starting amber, stopped red, no status gray. */
     static Color statusColor(ChannelStatusType status) {
         if (status == null || status == ChannelStatusType.Inactive) {
             return GRAY;
@@ -108,6 +113,8 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
                 return GREEN;
             case Stopped:
                 return RED;
+            case Retrying:
+                return YELLOW;
             default:
                 return AMBER;
         }
@@ -151,21 +158,25 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
             setIcon(IconManager.Named(kind.Icon, selectionText != null ? selectionText : kind.Color));
         } else {
             Icon base = IconManager.Named(kind.Icon, selectionText != null ? selectionText : table.getForeground());
-            setIcon(new WithDot(base, status, isSelected ? table.getSelectionBackground() : table.getBackground()));
+            Color ring = isSelected ? table.getSelectionBackground() : table.getBackground();
+            setIcon(new WithDot(base, status, ring, ((ChannelDetailModel) object.Detail).Status == ChannelStatusType.Retrying));
         }
         return this;
     }
 
-    /** Icon with a status dot at its bottom right corner. */
+    /** Icon with a status dot, or a warning triangle, at its bottom right corner. */
     static class WithDot implements Icon {
         private final Icon base;
         private final Color dot;
         private final Color ring;
+        private final boolean warning;
+        private static final Color EDGE = new Color(0x5C4400);
 
-        WithDot(Icon base, Color dot, Color ring) {
+        WithDot(Icon base, Color dot, Color ring, boolean warning) {
             this.base = base;
             this.dot = dot;
             this.ring = ring;
+            this.warning = warning;
         }
 
         @Override
@@ -176,11 +187,38 @@ public class ObjectNameRender extends DefaultTableCellRenderer {
             int d = 8;
             int dx = x + base.getIconWidth() - d + 2;
             int dy = y + base.getIconHeight() - d + 2;
+            if (warning) {
+                paintWarning(g2, dx + d / 2.0, dy + d);
+                g2.dispose();
+                return;
+            }
             g2.setColor(ring);
             g2.fillOval(dx - 2, dy - 2, d + 4, d + 4);
             g2.setColor(dot);
             g2.fillOval(dx, dy, d, d);
             g2.dispose();
+        }
+
+        // Road sign: yellow triangle with a dark edge and "!", standing on the bottom of the dot area
+        private void paintWarning(Graphics2D g2, double centerX, double bottom) {
+            double side = 11;
+            double height = side * 0.87;
+            Path2D triangle = new Path2D.Double();
+            triangle.moveTo(centerX, bottom - height);
+            triangle.lineTo(centerX + side / 2, bottom);
+            triangle.lineTo(centerX - side / 2, bottom);
+            triangle.closePath();
+            g2.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(ring);
+            g2.draw(triangle);
+            g2.setColor(dot);
+            g2.fill(triangle);
+            g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(EDGE);
+            g2.draw(triangle);
+            g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.draw(new Line2D.Double(centerX, bottom - height + 3.2, centerX, bottom - 3.6));
+            g2.fill(new Ellipse2D.Double(centerX - 0.8, bottom - 2.4, 1.6, 1.6));
         }
 
         @Override

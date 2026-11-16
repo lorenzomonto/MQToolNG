@@ -2,7 +2,6 @@ package UI.Misc;
 
 import UI.Helpers.IconManager;
 import UI.Helpers.TreeHelper;
-import UI.Models.QueueManagerSummary;
 import UI.Models.TreeNodeObject;
 import UI.Models.TreeNodeObject.TreeNodeObjectType;
 import java.awt.AWTEvent;
@@ -28,9 +27,8 @@ import javax.swing.plaf.LayerUI;
 import javax.swing.tree.DefaultMutableTreeNode;
 
 /**
- * Drawn over the queue manager list, aligned on its right side: the version and the number of checks
- * that need attention of each connected queue manager, the object counts of its folders, and the
- * quick actions of the row under the mouse. Also keeps the "Connecting…" dots spinning.
+ * Drawn over the queue manager list, aligned on its right side: the version of each connected queue manager
+ * and the quick actions of the row under the mouse. Also keeps the "Connecting…" dots spinning.
  */
 public class QueueManagerTreeLayer extends LayerUI<JTree> {
 
@@ -286,40 +284,26 @@ public class QueueManagerTreeLayer extends LayerUI<JTree> {
             }
             return;
         }
-        List<Chip> chips = chips(node, object);
-        if (chips.isEmpty()) {
+        String version = version(node, object);
+        if (version == null) {
             return;
         }
         Font font = tree.getFont().deriveFont(tree.getFont().getSize2D() - 1f);
         FontMetrics metrics = tree.getFontMetrics(font);
-        FontMetrics bold = tree.getFontMetrics(font.deriveFont(Font.BOLD));
-        int width = 0;
-        for (Chip chip : chips) {
-            width += chip.width(chip.bold ? bold : metrics) + GAP;
-        }
-        int x = right - width + GAP;
+        int w = metrics.stringWidth(version) + 8;
+        int h = metrics.getHeight() + 2;
+        int x = right - w;
+        int y = bounds.y + (bounds.height - h) / 2;
         cover(g2, bounds, x, right, selected, hovered);
-        for (Chip chip : chips) {
-            FontMetrics m = chip.bold ? bold : metrics;
-            int w = chip.width(m);
-            int h = m.getHeight() + 2;
-            int y = bounds.y + (bounds.height - h) / 2;
-            if (chip.background != null) {
-                g2.setColor(chip.background);
-                g2.fillRoundRect(x, y, w, h, h, h);
-            }
-            if (chip.border != null) {
-                g2.setColor(chip.border);
-                g2.drawRoundRect(x, y, w - 1, h - 1, 6, 6);
-            }
-            g2.setFont(chip.bold ? font.deriveFont(Font.BOLD) : font);
-            g2.setColor(chip.foreground);
-            g2.drawString(chip.text, x + chip.padding, y + 1 + m.getAscent());
-            x += w + GAP;
-        }
+        Color muted = UIManager.getColor("Label.disabledForeground");
+        g2.setColor(tint(muted, 110));
+        g2.drawRoundRect(x, y, w - 1, h - 1, 6, 6);
+        g2.setFont(font);
+        g2.setColor(muted);
+        g2.drawString(version, x + 4, y + 1 + metrics.getAscent());
     }
 
-    // Hides the end of the row text under the counts or the buttons, up to the right side of the list
+    // Hides the end of the row text under the version or the buttons, up to the right side of the list
     private void cover(Graphics2D g2, Rectangle bounds, int left, int right, boolean selected, boolean hovered) {
         Graphics2D clipped = (Graphics2D) g2.create();
         clipped.clipRect(left - GAP, bounds.y, tree.getWidth() - left + GAP, bounds.height);
@@ -338,52 +322,12 @@ public class QueueManagerTreeLayer extends LayerUI<JTree> {
         clipped.dispose();
     }
 
-    private List<Chip> chips(DefaultMutableTreeNode node, TreeNodeObject object) {
-        List<Chip> chips = new ArrayList<>();
-        DefaultMutableTreeNode queueManagerNode = TreeHelper.QueueManagerNodeOf(node);
-        if (queueManagerNode == null) {
-            return chips;
+    // Version of a connected queue manager, like "9.4", from its last overview
+    private static String version(DefaultMutableTreeNode node, TreeNodeObject object) {
+        if (object.Type != TreeNodeObjectType.QueueManager || !object.IsConnected() || object.Summary == null) {
+            return null;
         }
-        TreeNodeObject queueManager = object(queueManagerNode);
-        QueueManagerSummary summary = queueManager.IsConnected() ? queueManager.Summary : null;
-        if (summary == null) {
-            return chips;
-        }
-        Color muted = UIManager.getColor("Label.disabledForeground");
-        switch (object.Type) {
-            case QueueManager:
-                if (summary.Attention() > 0) {
-                    Color color = summary.Problems > 0 ? CustomTreeRender.RED : CustomTreeRender.ORANGE;
-                    chips.add(Chip.badge(String.valueOf(summary.Attention()), color));
-                }
-                if (summary.Version != null) {
-                    chips.add(new Chip(summary.Version, muted, null, tint(muted, 110), false, 4));
-                }
-                break;
-            case Queues:
-                addCount(chips, summary.LocalQueues, muted);
-                break;
-            case Channel:
-                if (summary.StoppedChannels > 0) {
-                    chips.add(Chip.badge(summary.StoppedChannels + " stopped", CustomTreeRender.RED));
-                } else if (summary.RetryingChannels > 0) {
-                    chips.add(Chip.badge(summary.RetryingChannels + " retrying", CustomTreeRender.ORANGE));
-                }
-                addCount(chips, summary.Channels, muted);
-                break;
-            case ChannelAuth:
-                addCount(chips, summary.ChannelAuthRules, muted);
-                break;
-            default:
-                break;
-        }
-        return chips;
-    }
-
-    private static void addCount(List<Chip> chips, int count, Color color) {
-        if (count >= 0) {
-            chips.add(new Chip(MQApi.Overview.MQFormat.Number(count), color, null, null, false, 0));
-        }
+        return object.Summary.Version;
     }
 
     private DefaultMutableTreeNode node(int row) {
@@ -396,32 +340,5 @@ public class QueueManagerTreeLayer extends LayerUI<JTree> {
 
     private static Color tint(Color color, int alpha) {
         return new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha);
-    }
-
-    /** A count, a colored badge or the version, on the right side of a row. */
-    private static class Chip {
-        final String text;
-        final Color foreground;
-        final Color background;
-        final Color border;
-        final boolean bold;
-        final int padding;
-
-        Chip(String text, Color foreground, Color background, Color border, boolean bold, int padding) {
-            this.text = text;
-            this.foreground = foreground;
-            this.background = background;
-            this.border = border;
-            this.bold = bold;
-            this.padding = padding;
-        }
-
-        static Chip badge(String text, Color color) {
-            return new Chip(text, color, tint(color, 40), null, true, 6);
-        }
-
-        int width(FontMetrics metrics) {
-            return metrics.stringWidth(text) + 2 * padding;
-        }
     }
 }
