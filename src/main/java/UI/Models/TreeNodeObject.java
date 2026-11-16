@@ -18,12 +18,18 @@ public class TreeNodeObject {
     public TreeNodeObjectType Type;
     public MQQueueManager QueueManager;
     public ConnectionDetailModel ConnectionDetail;
-    
+    // Queue manager nodes: state shown in the list
+    public boolean Connecting;
+    /** Short reason of the last failed connection, cleared when it connects or its settings change. */
+    public String LastError;
+    /** From the last overview loaded while connected; null before. */
+    public QueueManagerSummary Summary;
+
     public TreeNodeObject(String name, TreeNodeObjectType type){
         this.Name = name;
         this.Type = type;
     }
-    
+
     public boolean IsConnected(){
         return QueueManager != null && QueueManager.isConnected();
     }
@@ -41,6 +47,7 @@ public class TreeNodeObject {
     }
     public enum TreeNodeObjectType{
         Root,
+        /** A section of the queue manager list: connected or not connected. */
         QueueManagerFolder,
         QueueManager,
         Queues,

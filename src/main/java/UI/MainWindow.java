@@ -155,6 +155,9 @@ public class MainWindow extends javax.swing.JFrame {
     });
     private final javax.swing.JCheckBoxMenuItem checkUpdatesMenuItem = new javax.swing.JCheckBoxMenuItem("Check for updates at startup");
     private final QueueManagerOverviewPanel overviewPanel = new QueueManagerOverviewPanel(new OverviewActions());
+    // Counts, badges and quick actions drawn over the queue manager list
+    private final UI.Misc.QueueManagerTreeLayer treeLayer = new UI.Misc.QueueManagerTreeLayer(new TreeActions());
+    private final javax.swing.JTextField treeFilterField = new javax.swing.JTextField();
     private DefaultMutableTreeNode overviewNode;
     private QueueManagerOverview overviewData;
     private String pendingSearch;
@@ -197,12 +200,26 @@ public class MainWindow extends javax.swing.JFrame {
             @Override
             public String getToolTipText(MouseEvent event) {
                 // Connection details of a queue manager node (never the password)
+                String actionTip = treeLayer == null ? null : treeLayer.ActionTip(event.getPoint());
+                if(actionTip != null){
+                    return actionTip;
+                }
                 TreePath path = TreeView.getPathForLocation(event.getX(), event.getY());
                 if(path == null){
                     return null;
                 }
                 TreeNodeObject nodeObject = (TreeNodeObject)((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
-                return nodeObject.ConnectionDetail != null ? nodeObject.ConnectionDetail.toString() : null;
+                if(nodeObject.ConnectionDetail == null){
+                    return null;
+                }
+                return nodeObject.LastError == null ? nodeObject.ConnectionDetail.toString()
+                        : nodeObject.ConnectionDetail.toString() + "\nLast connection: " + nodeObject.LastError;
+            }
+
+            @Override
+            public boolean getScrollableTracksViewportWidth() {
+                // Rows as wide as the list: the counts and buttons are drawn on its right side
+                return true;
             }
     };
     ContentPanel = new javax.swing.JPanel();
@@ -1219,10 +1236,11 @@ public class MainWindow extends javax.swing.JFrame {
         this.setSize(1280, 800);
         this.setLocationRelativeTo(null);
         this.SplitPane.setDividerLocation(260);
-        this.TreeView.setBorder(BorderFactory.createEmptyBorder(6, 0, 6, 0));
+        this.TreeView.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
         this.TreeViewPanel.putClientProperty(FlatClientProperties.STYLE, "border: 0,0,0,0");
         // Sidebar look: no border around the tree
         jScrollPane1.setBorder(BorderFactory.createEmptyBorder());
+        initQueueManagerList();
 
         // Search: Enter applies the filter, the clear button removes it
         this.SearchButton.setVisible(false);
@@ -1257,6 +1275,154 @@ public class MainWindow extends javax.swing.JFrame {
         jScrollPane2.setBorder(BorderFactory.createEmptyBorder());
         ContentTable.putClientProperty(FlatClientProperties.STYLE, "showCellFocusIndicator: false");
         updateContentTitle();
+    }
+
+    // Header of the queue manager list (filter, refresh all, add) and the list with its quick actions
+    private void initQueueManagerList(){
+        TreeView.setRowHeight(0); // section headers are taller than the rows
+        jScrollPane1.setViewportView(new javax.swing.JLayer<>(TreeView, treeLayer));
+        jScrollPane1.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+
+        javax.swing.JLabel title = new javax.swing.JLabel("Queue managers");
+        title.putClientProperty(FlatClientProperties.STYLE, "font: bold");
+        javax.swing.JToggleButton filterButton = headerButton(new javax.swing.JToggleButton(), "search", "Filter queue managers");
+        javax.swing.JButton refreshButton = headerButton(new javax.swing.JButton(), "refresh-cw", "Refresh all connected queue managers");
+        javax.swing.JButton addButton = headerButton(new javax.swing.JButton(), "plus", "Add queue manager");
+        refreshButton.addActionListener(e -> refreshAllQueueManagers());
+        addButton.addActionListener(e -> {
+            queueManagerEditPanelEditMode = false;
+            addQueueManageMenuItemActionPerformed(e);
+        });
+
+        treeFilterField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Name or address");
+        treeFilterField.putClientProperty(FlatClientProperties.TEXT_FIELD_SHOW_CLEAR_BUTTON, true);
+        treeFilterField.setVisible(false);
+        treeFilterField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                TreeHelper.SetFilter(TreeView, treeFilterField.getText());
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                TreeHelper.SetFilter(TreeView, treeFilterField.getText());
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+            }
+        });
+        // Closing the filter shows all the queue managers again
+        Runnable closeFilter = () -> {
+            treeFilterField.setText("");
+            treeFilterField.setVisible(false);
+            filterButton.setSelected(false);
+            TreeViewPanel.revalidate();
+            TreeView.requestFocusInWindow();
+        };
+        filterButton.addActionListener(e -> {
+            if(filterButton.isSelected()){
+                treeFilterField.setVisible(true);
+                TreeViewPanel.revalidate();
+                treeFilterField.requestFocusInWindow();
+            }
+            else{
+                closeFilter.run();
+            }
+        });
+        treeFilterField.registerKeyboardAction(e -> closeFilter.run(),
+                javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), javax.swing.JComponent.WHEN_FOCUSED);
+
+        javax.swing.JPanel titleRow = new javax.swing.JPanel();
+        titleRow.setLayout(new javax.swing.BoxLayout(titleRow, javax.swing.BoxLayout.X_AXIS));
+        titleRow.setOpaque(false);
+        titleRow.add(title);
+        titleRow.add(Box.createHorizontalGlue());
+        titleRow.add(filterButton);
+        titleRow.add(refreshButton);
+        titleRow.add(addButton);
+        javax.swing.JPanel header = new javax.swing.JPanel(new java.awt.BorderLayout(0, 6));
+        header.setOpaque(false);
+        header.setBorder(BorderFactory.createEmptyBorder(8, 12, 2, 6));
+        header.add(titleRow, java.awt.BorderLayout.NORTH);
+        header.add(treeFilterField, java.awt.BorderLayout.CENTER);
+
+        TreeViewPanel.removeAll();
+        TreeViewPanel.setLayout(new java.awt.BorderLayout());
+        TreeViewPanel.add(header, java.awt.BorderLayout.NORTH);
+        TreeViewPanel.add(jScrollPane1, java.awt.BorderLayout.CENTER);
+    }
+
+    private <T extends javax.swing.AbstractButton> T headerButton(T button, String icon, String tooltip){
+        button.setIcon(IconManager.Named(icon, UIManager.getColor("Label.foreground")));
+        button.setToolTipText(tooltip);
+        button.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        button.setFocusable(false);
+        button.setPreferredSize(new Dimension(26, 26));
+        button.setMaximumSize(new Dimension(26, 26));
+        return button;
+    }
+
+    /** Quick actions of the queue manager rows (the node is already selected). */
+    private class TreeActions implements UI.Misc.QueueManagerTreeLayer.Actions {
+        @Override
+        public void Connect(DefaultMutableTreeNode node) {
+            connectSelectedQueueManager();
+        }
+
+        @Override
+        public void Edit(DefaultMutableTreeNode node) {
+            editQueueManager();
+        }
+
+        @Override
+        public void Refresh(DefaultMutableTreeNode node) {
+            showTableData(true);
+        }
+
+        @Override
+        public void ShowMenu(DefaultMutableTreeNode node, javax.swing.JComponent invoker, int x, int y) {
+            getTreeViewQueueManagerPopupMenu(((TreeNodeObject) node.getUserObject()).IsConnected()).show(invoker, x, y);
+        }
+    }
+
+    // Reads again the version, checks and counts of every connected queue manager shown in the list
+    private void refreshAllQueueManagers(){
+        java.util.List<DefaultMutableTreeNode> nodes = TreeHelper.ConnectedQueueManagerNodes();
+        nodes.remove(overviewNode); // its page is reloaded below, which updates it too
+        if(!nodes.isEmpty()){
+            new SwingWorker<Void, Object[]>() {
+                @Override
+                protected Void doInBackground() {
+                    for(DefaultMutableTreeNode node : nodes){
+                        TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
+                        MQQueueManager queueManager = nodeObject.QueueManager;
+                        if(queueManager != null && queueManager.isConnected()){
+                            publish(new Object[]{node, QueueManagerOverview.Load(queueManager)});
+                        }
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void process(java.util.List<Object[]> loaded) {
+                    for(Object[] result : loaded){
+                        updateSummary((DefaultMutableTreeNode) result[0], (QueueManagerOverview) result[1]);
+                    }
+                }
+            }.execute();
+        }
+        showTableData(true);
+    }
+
+    private void updateSummary(DefaultMutableTreeNode node, QueueManagerOverview overview){
+        TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
+        if(!nodeObject.IsConnected() || (overview.Config.isEmpty() && overview.Status.isEmpty())){
+            return;
+        }
+        overview.Encrypted = nodeObject.ConnectionDetail.IsTlsEnabled();
+        nodeObject.Summary = UI.Models.QueueManagerSummary.From(overview);
+        TreeHelper.RepaintNode(TreeView, node);
     }
 
     private void showTableView(){
@@ -1304,6 +1470,7 @@ public class MainWindow extends javax.swing.JFrame {
                     }
                     else{
                         overviewPanel.ShowOverview(name, overviewData);
+                        updateSummary(node, overviewData);
                     }
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
@@ -1390,7 +1557,9 @@ public class MainWindow extends javax.swing.JFrame {
         }
         TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
         String title = nodeObject.toString();
-        for(javax.swing.tree.TreeNode parent = node.getParent(); parent != null; parent = parent.getParent()){
+        // A folder takes the name of its queue manager (a queue manager may be shown under another one)
+        javax.swing.tree.TreeNode start = nodeObject.Type == TreeNodeObject.TreeNodeObjectType.QueueManager ? null : node.getParent();
+        for(javax.swing.tree.TreeNode parent = start; parent != null; parent = parent.getParent()){
             Object userObject = ((DefaultMutableTreeNode) parent).getUserObject();
             if(userObject instanceof TreeNodeObject && ((TreeNodeObject) userObject).Type == TreeNodeObject.TreeNodeObjectType.QueueManager){
                 title = ((TreeNodeObject) userObject).ConnectionDetail.QueueManager + "  ›  " + title;
@@ -2025,6 +2194,10 @@ public class MainWindow extends javax.swing.JFrame {
             }
         }
         connectingNodes.add(selectedNode);
+        nodeObject.Connecting = true;
+        nodeObject.LastError = null;
+        TreeHelper.RepaintNode(TreeView, selectedNode);
+        treeLayer.ConnectingChanged();
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         final ConnectionDetailModel connectionDetail = nodeObject.ConnectionDetail;
         new SwingWorker<MQQueueManager, Void>() {
@@ -2036,6 +2209,7 @@ public class MainWindow extends javax.swing.JFrame {
             @Override
             protected void done() {
                 connectingNodes.remove(selectedNode);
+                nodeObject.Connecting = false;
                 setCursor(Cursor.getDefaultCursor());
                 try {
                     TreeHelper.AddConnectedQueueManagerNode(TreeView, selectedNode, get());
@@ -2043,6 +2217,15 @@ public class MainWindow extends javax.swing.JFrame {
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 } catch (ExecutionException ex) {
+                    // Shown in the row too, until it connects or its settings change
+                    int reason = ex.getCause() instanceof MQException ? ((MQException) ex.getCause()).getReason() : 0;
+                    if(connectionDetail.IsRemote() && reason == com.ibm.mq.constants.MQConstants.MQRC_NO_MSG_AVAILABLE){
+                        nodeObject.LastError = "No answer through " + connectionDetail.ViaQueueManager.trim();
+                    }
+                    else{
+                        nodeObject.LastError = reason != 0 ? UI.Misc.CustomTreeRender.ShortReason(reason) : "Connection failed";
+                    }
+                    TreeHelper.RepaintNode(TreeView, selectedNode);
                     if(ex.getCause() instanceof MQException){
                         MQException mqEx = (MQException) ex.getCause();
                         LogWriter.WriteToLog("MainWindow", "getTreeViewQueueManagerPopupMenu", mqEx);
@@ -2073,7 +2256,16 @@ public class MainWindow extends javax.swing.JFrame {
 
     private void TreeViewMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_TreeViewMouseClicked
         if(evt.getButton() == MouseEvent.BUTTON3){
-            TreePath pathForLocation = TreeView.getPathForLocation(evt.getPoint().x, evt.getPoint().y);
+            // The row under the mouse on the whole width of the list, not only on its text
+            int row = TreeView.getClosestRowForLocation(evt.getX(), evt.getY());
+            java.awt.Rectangle rowBounds = row < 0 ? null : TreeView.getRowBounds(row);
+            TreePath pathForLocation = rowBounds != null && evt.getY() >= rowBounds.y && evt.getY() < rowBounds.y + rowBounds.height
+                    ? TreeView.getPathForRow(row) : null;
+            if(pathForLocation == null || TreeHelper.IsSection(pathForLocation.getLastPathComponent())){
+                // Empty space or a section header: only "Add queue manager", the selection stays
+                getTreeViewQueueManagerFolderPopupMenu().show(evt.getComponent(), evt.getPoint().x, evt.getPoint().y);
+                return;
+            }
             if(pathForLocation != null){
                 TreeView.setSelectionPath(pathForLocation);
                 DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) pathForLocation.getLastPathComponent();
@@ -2205,6 +2397,9 @@ public class MainWindow extends javax.swing.JFrame {
     }//GEN-LAST:event_ShowTempObjectToggleItemStateChanged
 
     private void TreeViewValueChanged(javax.swing.event.TreeSelectionEvent evt) {//GEN-FIRST:event_TreeViewValueChanged
+        if(TreeHelper.IsArranging()){
+            return; // the list is rebuilt: the same node is selected again
+        }
         treeSelectionChangeActionPerform(evt);
     }//GEN-LAST:event_TreeViewValueChanged
 

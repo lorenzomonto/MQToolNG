@@ -19,6 +19,10 @@ Modified in November 2026:
 - TLS for the connections (optional), and fixes for XML external entities and backup file deserialization.
 - Queue managers administered through another one, like MQ Explorer (Connect: Through ...): the commands
   reach them through the channels of the queue manager connected to. Messages can be put but not browsed.
+- Queue manager list in two sections, connected and not connected, with filter and refresh of all: each row
+  shows the state (connecting, last connection error), the version and the checks that need attention;
+  quick actions on mouse over; queue, channel and authentication rule counts. A queue manager administered
+  through another connected one is shown under it.
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
