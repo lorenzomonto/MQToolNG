@@ -33,6 +33,7 @@ public class BackupRestoreMessageTask extends TaskBase{
     boolean removeDLH;
     boolean removeAfter;
     String filterString;
+    boolean dmpmqmsg;
     
     public BackupRestoreMessageTask(MQQueueManager queueManager, String queueName,String filePath,  Frame parent,JProgressBar progressBar, ArrayList<MQMessageIdModel> ids, int option, boolean isCompress, boolean isAlias, boolean removeDLH, boolean removeAfter, String filterString){
         this.filePath = filePath;
@@ -49,6 +50,15 @@ public class BackupRestoreMessageTask extends TaskBase{
         this.removeAfter = removeAfter;
     }
 
+    /** Backup in the text format of IBM dmpmqmsg. */
+    public void SetDmpmqmsgFormat(boolean dmpmqmsg){
+        this.dmpmqmsg = dmpmqmsg;
+    }
+
+    private static String messages(int count){
+        return count == 1 ? "1 message" : count + " messages";
+    }
+
     @Override
     public void run() {
         runTask();
@@ -57,8 +67,9 @@ public class BackupRestoreMessageTask extends TaskBase{
     private void runTask(){
         if(option == BackupRestoreMessageDialog.Usage_Backup){
             try {
-                MQUtility.BackupMessageToFile(queueManager, queueName, filePath, progressBar,ids,isCompress,isAlias, removeDLH, removeAfter, filterString);
-                JOptionPane.showMessageDialog(parent, "Successfully backup to file " + filePath, "Success", JOptionPane.INFORMATION_MESSAGE);
+                int saved = MQUtility.BackupMessageToFile(queueManager, queueName, filePath, progressBar,ids,isCompress,isAlias, removeDLH, removeAfter, filterString, dmpmqmsg);
+                JOptionPane.showMessageDialog(parent, messages(saved) + (removeAfter ? " saved to " + filePath + " and removed from the queue" : " saved to " + filePath),
+                        "Success", JOptionPane.INFORMATION_MESSAGE);
                 FireActionSuccessEvent();
             } catch (Exception ex) {
                 Logger.getLogger(BackupRestoreMessageTask.class.getName()).log(Level.SEVERE, null, ex);
@@ -68,8 +79,14 @@ public class BackupRestoreMessageTask extends TaskBase{
         }
         else if(option == BackupRestoreMessageDialog.Usage_Restore){
             try {
-                MQUtility.RestoreMessageFromFile(queueManager, queueName, filePath, progressBar,isAlias,true);
-                JOptionPane.showMessageDialog(parent, "Successfully restore messages to queue " + queueName, "Success", JOptionPane.INFORMATION_MESSAGE);
+                MQUtility.RestoreResult result = MQUtility.RestoreMessageFromFile(queueManager, queueName, filePath, progressBar,isAlias,true);
+                if(result.Complete){
+                    JOptionPane.showMessageDialog(parent, messages(result.Restored) + " restored to queue " + queueName, "Success", JOptionPane.INFORMATION_MESSAGE);
+                }
+                else{
+                    JOptionPane.showMessageDialog(parent, "The file ends early (it was not written to the end): the "
+                            + messages(result.Restored) + " it contains were restored to queue " + queueName, "Warning", JOptionPane.WARNING_MESSAGE);
+                }
                 FireActionSuccessEvent();
             } catch (Exception ex) {
                 Logger.getLogger(BackupRestoreMessageTask.class.getName()).log(Level.SEVERE, null, ex);

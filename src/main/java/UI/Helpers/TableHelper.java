@@ -161,7 +161,22 @@ public class TableHelper {
         SwingThread.RunOnEdt(() -> {
             if(rows != null){
                 DefaultTableModel model = (DefaultTableModel)contentTable.getModel();
+                // A refresh of the same list keeps the selected objects, the sort order and the scroll position
+                boolean sameColumns = java.util.Arrays.equals(headers, columnNames(model));
+                java.util.Set<String> selected = sameColumns ? selectedNames(contentTable) : java.util.Collections.emptySet();
+                java.util.List<? extends javax.swing.RowSorter.SortKey> sortKeys = sameColumns && contentTable.getRowSorter() != null
+                        ? contentTable.getRowSorter().getSortKeys() : null;
+                java.awt.Point scroll = sameColumns && contentTable.getParent() instanceof javax.swing.JViewport
+                        ? ((javax.swing.JViewport) contentTable.getParent()).getViewPosition() : null;
                 model.setDataVector(rows, headers);
+                if(sortKeys != null && !sortKeys.isEmpty() && contentTable.getRowSorter() != null){
+                    contentTable.getRowSorter().setSortKeys(sortKeys);
+                }
+                restoreSelection(contentTable, selected);
+                if(scroll != null){
+                    java.awt.Point position = scroll;
+                    javax.swing.SwingUtilities.invokeLater(() -> ((javax.swing.JViewport) contentTable.getParent()).setViewPosition(position));
+                }
             }
             else{
                 ToggleContentTable(contentTable, false);
@@ -175,6 +190,39 @@ public class TableHelper {
             resizeColumnWidth(contentTable);
             contentTable.getTableHeader().setReorderingAllowed(false); 
         });
+    }
+
+    private static String[] columnNames(DefaultTableModel model){
+        String[] names = new String[model.getColumnCount()];
+        for(int i = 0; i < names.length; i++){
+            names[i] = model.getColumnName(i);
+        }
+        return names;
+    }
+
+    // Names of the selected objects (first column), to select them again after a refresh
+    private static java.util.Set<String> selectedNames(JTable table){
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for(int row : table.getSelectedRows()){
+            Object value = table.getModel().getValueAt(table.convertRowIndexToModel(row), 0);
+            if(value instanceof TableListObject && ((TableListObject) value).ObjectName != null){
+                names.add(((TableListObject) value).ObjectName);
+            }
+        }
+        return names;
+    }
+
+    private static void restoreSelection(JTable table, java.util.Set<String> names){
+        if(names.isEmpty()){
+            return;
+        }
+        table.clearSelection();
+        for(int row = 0; row < table.getRowCount(); row++){
+            Object value = table.getModel().getValueAt(table.convertRowIndexToModel(row), 0);
+            if(value instanceof TableListObject && names.contains(((TableListObject) value).ObjectName)){
+                table.addRowSelectionInterval(row, row);
+            }
+        }
     }
 
     private static TableContentType getTableContentType(Object data){

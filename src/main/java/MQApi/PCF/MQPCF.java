@@ -1121,6 +1121,31 @@ public class MQPCF {
     }
 
     /**
+     * Sends several commands at once and returns the responses of each, in the order of the commands
+     * (see ReadAheadPCFMessageAgent.SendAll). Error responses are returned, not thrown.
+     */
+    public static PCFMessage[][] SendAll(MQQueueManager queueManager, PCFMessage[] commands) throws MQDataException, IOException{
+        PCFMessageAgent agent = getPCFMessageAgent(queueManager);
+        if(!(agent instanceof ReadAheadPCFMessageAgent)){
+            disconnectAgent(agent);
+            PCFMessage[][] responses = new PCFMessage[commands.length][];
+            for(int i = 0; i < commands.length; i++){
+                responses[i] = Send(queueManager, commands[i]);
+            }
+            return responses;
+        }
+        try {
+            PCFMessage[][] responses = ((ReadAheadPCFMessageAgent) agent).SendAll(commands);
+            disconnectAgent(agent);
+            return responses;
+        } catch (MQDataException | IOException | RuntimeException ex) {
+            // Replies may still arrive on its reply queue: the agent is not used again
+            PCFAgentPool.Discard(agent);
+            throw ex;
+        }
+    }
+
+    /**
      * Pings the remote queue manager administered through this connection, waiting at most the given
      * seconds for its answer: it fails when the channels or its command server do not work.
      */

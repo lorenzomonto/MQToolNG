@@ -49,7 +49,7 @@ public class BrowseMessageDialog extends DialogBase {
     private int totalPage;
     private int currentPage = 1;
     private HashMap<Integer, MQMessageIdModel> pageInfoMap = new HashMap<Integer, MQMessageIdModel>();
-        
+
     public BrowseMessageDialog(java.awt.Frame parent, boolean modal, MQQueueManager queueManager, TableListObject selectedObject) {
         super(parent, modal,  queueManager,selectedObject );
         this.isAlias = ((QueueType)selectedObject.Type) == QueueType.Alias;
@@ -73,9 +73,9 @@ public class BrowseMessageDialog extends DialogBase {
         this.QueueNameLabel.setText(selectedObject.ObjectName);
         this.Refreshbutton.setEnabled(false);
         MessageListTable.setAutoCreateRowSorter(true);
-        TableHelper.ToggleContentTable(MessageListTable, true);   
+        TableHelper.ToggleContentTable(MessageListTable, true);
     }
-    
+
     private JPopupMenu getMessagelListTablePopupMenu(){
         JPopupMenu popup = new JPopupMenu();
         JMenuItem backupMenuItem = new JMenuItem("Backup messages to file",iconManager.BackupMessageIcon());
@@ -361,7 +361,7 @@ public class BrowseMessageDialog extends DialogBase {
     }//GEN-LAST:event_MessageListTableMouseClicked
     
     private void updateTable(){
-        tableLoadStart();        
+        tableLoadStart();      
         Thread thread = new Thread(new Runnable() {
 
             @Override

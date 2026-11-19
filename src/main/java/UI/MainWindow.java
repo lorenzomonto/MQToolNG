@@ -159,6 +159,13 @@ public class MainWindow extends javax.swing.JFrame {
     private final UI.Misc.QueueManagerTreeLayer treeLayer = new UI.Misc.QueueManagerTreeLayer(new TreeActions());
     private final javax.swing.JTextField treeFilterField = new javax.swing.JTextField();
     private DefaultMutableTreeNode overviewNode;
+    // Automatic refresh of the page shown (list or queue manager page), 0 when off
+    private int autoRefreshSeconds = 0;
+    private final javax.swing.Timer autoRefreshTimer = new javax.swing.Timer(1000, e -> autoRefresh());
+    private UI.Misc.AutoRefreshButton listAutoRefreshButton;
+    private UI.Misc.AutoRefreshButton overviewAutoRefreshButton;
+    // A load of the queue manager page is running: an automatic refresh waits for it
+    private boolean overviewLoading;
     private QueueManagerOverview overviewData;
     private String pendingSearch;
     public MainWindow() {      
@@ -905,6 +912,20 @@ public class MainWindow extends javax.swing.JFrame {
             popup.add(deleteMenuItem);          
         }
         else{
+            JMenuItem exportConfigMenuItem = new JMenuItem("Export configuration (MQSC)…", iconManager.ExportConfigIcon());
+            JMenuItem compareMenuItem = new JMenuItem("Compare with another queue manager…", iconManager.CompareIcon());
+            JMenuItem authorityMenuItem = new JMenuItem("Authority records…", iconManager.AuthorityIcon());
+            exportConfigMenuItem.addActionListener(e -> showConfigExport());
+            compareMenuItem.addActionListener(e -> showConfigCompare());
+            authorityMenuItem.addActionListener(e -> showQueueManagerAuthorities());
+            if(TreeHelper.ConnectedQueueManagerNodes().size() < 2){
+                compareMenuItem.setEnabled(false);
+                compareMenuItem.setToolTipText("Connect another queue manager to compare them");
+            }
+            popup.add(exportConfigMenuItem);
+            popup.add(compareMenuItem);
+            popup.add(authorityMenuItem);
+            popup.add(new JPopupMenu.Separator());
             popup.add(disconnectMenuItem);
         }        
         return popup;
@@ -1024,6 +1045,14 @@ public class MainWindow extends javax.swing.JFrame {
                     popup.add(propertistMenuItem);
                     break;
             }
+            JMenuItem authorityMenuItem = new JMenuItem("Authorities…", iconManager.AuthorityIcon());
+            authorityMenuItem.addActionListener(e -> showObjectAuthorities("QUEUE"));
+            popup.insert(authorityMenuItem, popup.getComponentIndex(propertistMenuItem));
+            if(queueType == QueueType.Local || queueType == QueueType.Alias){
+                JMenuItem depthChartMenuItem = new JMenuItem("Depth chart…", iconManager.MonitorIcon());
+                depthChartMenuItem.addActionListener(e -> showDepthChart(queueType == QueueType.Alias));
+                popup.insert(depthChartMenuItem, popup.getComponentIndex(authorityMenuItem));
+            }
 
             return popup;       
         }
@@ -1106,6 +1135,9 @@ public class MainWindow extends javax.swing.JFrame {
             popup.add(statusMenuItem);
             popup.add(statusSavedMenuItem);
             popup.add(new JPopupMenu.Separator());           
+            JMenuItem authorityMenuItem = new JMenuItem("Authorities…", iconManager.AuthorityIcon());
+            authorityMenuItem.addActionListener(e -> showObjectAuthorities(channelType == ChannelType.Client_connection ? "CLNTCONN" : "CHANNEL"));
+            popup.add(authorityMenuItem);
             popup.add(propertiesMenuItem);
             return popup; 
         }
@@ -1259,6 +1291,11 @@ public class MainWindow extends javax.swing.JFrame {
             button.setMaximumSize(new Dimension(32, 32));
             button.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
         }
+
+        // Automatic refresh, next to the refresh button (the toolbar is right-to-left: on its left)
+        listAutoRefreshButton = new UI.Misc.AutoRefreshButton(new AutoRefreshSetting(), true);
+        listAutoRefreshButton.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        FilterToolbar.add(listAutoRefreshButton, FilterToolbar.getComponentIndex(RefreshButton) + 1);
 
         // Title of the current view on the left side of the toolbar (the toolbar is right-to-left)
         ContentTitleLabel.putClientProperty(FlatClientProperties.STYLE_CLASS, "h3");
@@ -1433,11 +1470,20 @@ public class MainWindow extends javax.swing.JFrame {
     }
 
     private void showQueueManagerOverview(DefaultMutableTreeNode node){
+        showQueueManagerOverview(node, false);
+    }
+
+    /** quiet: an automatic refresh of the page shown, which stays visible while it is read again. */
+    private void showQueueManagerOverview(DefaultMutableTreeNode node, boolean quiet){
         resetTimmer();
         TableHelper.ToggleContentTable(ContentTable, false);
         showContentTableLoading(false);
+        boolean samePage = overviewNode == node && overviewData != null;
+        quiet = quiet && samePage;
         overviewNode = node;
-        overviewData = null;
+        if(!quiet){
+            overviewData = null;
+        }
         if(jScrollPane2.getViewport().getView() != overviewPanel){
             jScrollPane2.setViewportView(overviewPanel);
             // The page has its own title and buttons: the list toolbar would only repeat the name
@@ -1449,7 +1495,10 @@ public class MainWindow extends javax.swing.JFrame {
             overviewPanel.ShowNotConnected(name, nodeObject.ConnectionDetail.Address());
             return;
         }
-        overviewPanel.ShowLoading(name);
+        if(!quiet){
+            overviewPanel.ShowLoading(name);
+        }
+        overviewLoading = true;
         final MQQueueManager queueManager = nodeObject.QueueManager;
         new SwingWorker<QueueManagerOverview, Void>() {
             @Override
@@ -1459,6 +1508,7 @@ public class MainWindow extends javax.swing.JFrame {
 
             @Override
             protected void done() {
+                overviewLoading = false;
                 if(overviewNode != node){
                     return; // another node was selected meanwhile
                 }
@@ -1486,6 +1536,12 @@ public class MainWindow extends javax.swing.JFrame {
         @Override
         public void Refresh() {
             showTableData(true);
+        }
+
+        @Override
+        public javax.swing.JComponent AutoRefreshButton() {
+            overviewAutoRefreshButton = new UI.Misc.AutoRefreshButton(new AutoRefreshSetting(), false);
+            return overviewAutoRefreshButton;
         }
 
         @Override
@@ -1688,6 +1744,50 @@ public class MainWindow extends javax.swing.JFrame {
         dialog.setVisible(true); 
     }
        
+    /** The interval of the automatic refresh, the same for the lists and the queue manager page. */
+    private class AutoRefreshSetting implements UI.Misc.AutoRefreshButton.Setting {
+        @Override
+        public int Seconds() {
+            return autoRefreshSeconds;
+        }
+
+        @Override
+        public void SetSeconds(int seconds) {
+            autoRefreshSeconds = seconds;
+            autoRefreshTimer.stop();
+            if(seconds > 0){
+                autoRefreshTimer.setDelay(seconds * 1000);
+                autoRefreshTimer.setInitialDelay(seconds * 1000);
+                autoRefreshTimer.start();
+            }
+            for(UI.Misc.AutoRefreshButton button : new UI.Misc.AutoRefreshButton[]{listAutoRefreshButton, overviewAutoRefreshButton}){
+                if(button != null){
+                    button.Update();
+                }
+            }
+        }
+    }
+
+    // Reads the page shown again, unless it is still being read or the window is minimized
+    private void autoRefresh(){
+        if((getExtendedState() & java.awt.Frame.ICONIFIED) != 0 || TreeView.getSelectionPath() == null){
+            return;
+        }
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) TreeView.getSelectionPath().getLastPathComponent();
+        TreeNodeObject nodeObject = (TreeNodeObject) node.getUserObject();
+        if(!nodeObject.IsConnected() && nodeObject.Type == TreeNodeObject.TreeNodeObjectType.QueueManager){
+            return;
+        }
+        if(nodeObject.Type == TreeNodeObject.TreeNodeObjectType.QueueManager){
+            if(!overviewLoading){
+                showQueueManagerOverview(node, true);
+            }
+        }
+        else if(!ContentTableProgressBar.isVisible() && RefreshButton.isEnabled()){
+            showTableData(true);
+        }
+    }
+
     private void showTableData(boolean loadNewData){
         TreePath path = TreeView.getSelectionPath();
         if(path != null){
@@ -2079,6 +2179,64 @@ public class MainWindow extends javax.swing.JFrame {
         dialog.setVisible(true);      
     }
     
+    // The queue manager node of the selection in the list
+    private TreeNodeObject selectedQueueManagerNode(){
+        DefaultMutableTreeNode node = TreeHelper.QueueManagerNodeOf((DefaultMutableTreeNode) TreeView.getLastSelectedPathComponent());
+        return node == null ? null : (TreeNodeObject) node.getUserObject();
+    }
+
+    private void showConfigExport(){
+        TreeNodeObject node = selectedQueueManagerNode();
+        if(node != null && node.IsConnected()){
+            UI.Config.ConfigExportDialog.Show(this, node.QueueManager, node.Name, "MQToolNG " + AppInfo.Version());
+        }
+    }
+
+    private void showConfigCompare(){
+        TreeNodeObject node = selectedQueueManagerNode();
+        if(node == null || !node.IsConnected()){
+            return;
+        }
+        // Connected queue managers by name; the same name twice (two connections) gets its address
+        java.util.Map<String, MQQueueManager> connected = new java.util.LinkedHashMap<>();
+        String selectedKey = node.Name;
+        for(DefaultMutableTreeNode connectedNode : TreeHelper.ConnectedQueueManagerNodes()){
+            TreeNodeObject other = (TreeNodeObject) connectedNode.getUserObject();
+            String key = connected.containsKey(other.Name) ? other.Name + " (" + other.ConnectionDetail.Address() + ")" : other.Name;
+            connected.put(key, other.QueueManager);
+            if(other == node){
+                selectedKey = key;
+            }
+        }
+        new UI.Config.ConfigCompareDialog(this, selectedKey, connected).setVisible(true);
+    }
+
+    private void showQueueManagerAuthorities(){
+        TreeNodeObject node = selectedQueueManagerNode();
+        if(node != null && node.IsConnected()){
+            new UI.Config.AuthorityDialog(this, node.QueueManager, node.Name, null, null).setVisible(true);
+        }
+    }
+
+    private void showObjectAuthorities(String objectType){
+        TreeNodeObject node = selectedQueueManagerNode();
+        TableListObject selectedObject = TableHelper.GetCurrentTableSelectRowObject(ContentTable);
+        if(node != null && node.IsConnected() && selectedObject != null){
+            new UI.Config.AuthorityDialog(this, node.QueueManager, node.Name, selectedObject.ObjectName, objectType).setVisible(true);
+        }
+    }
+
+    private void showDepthChart(boolean alias){
+        TreeNodeObject node = selectedQueueManagerNode();
+        TableListObject selectedObject = TableHelper.GetCurrentTableSelectRowObject(ContentTable);
+        if(node == null || !node.IsConnected() || selectedObject == null){
+            return;
+        }
+        // An alias has no depth: the chart is of its base queue
+        String queueName = alias ? MQApi.PCF.MQPCF.ResolveAliasBaseQueueName(node.QueueManager, selectedObject.ObjectName) : selectedObject.ObjectName;
+        new UI.Config.QueueDepthChartDialog(this, node.QueueManager, node.Name, queueName).setVisible(true);
+    }
+
     private void showStatusDialog(StatusType type){
         MQQueueManager queueManager = TreeHelper.GetCurrentSelectedQueueManager(TreeView);
         TableListObject selectedObject = TableHelper.GetCurrentTableSelectRowObject(ContentTable);   

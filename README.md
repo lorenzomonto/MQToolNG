@@ -23,6 +23,15 @@ Modified in November 2026:
   shows the state (connecting, last connection error) and the version; quick actions on mouse over.
   A queue manager administered through another connected one is shown under it.
 - Channel list: a dot for the channel status, and a yellow warning triangle for a retrying channel.
+- Safe message operations: a backup that removes the messages removes them only once the file is
+  complete, in units of work (and with a filter only the saved ones); editing a message, also keeping
+  its position, and restoring a file run under syncpoint, so an error or a stop leaves no message lost.
+- New message file format with the message properties (the old backups lost them), and files of IBM
+  dmpmqmsg (qload) written and read.
+- Configuration of a queue manager as an MQSC script (like dmpmqcfg), comparison of two queue managers
+  with the commands that align the second one, and authority records (setmqaut) shown and changed.
+- Message browser: JSON shown indented; message properties shown and changed.
+- Automatic refresh of the lists and of the queue manager page, and a depth chart of a queue.
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
@@ -68,6 +77,25 @@ the busiest queues, services, recovery log and key settings. **Properties** open
 grouped and searchable (`UI/Overview/QueueManagerPropertiesDialog`). The data comes from INQUIRE QMGR,
 QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi/Overview/QueueManagerOverview`).
 
+## Message files
+
+- **Backup** (`.msg`, `MQApi/Utilities/MessageFile`): for each message its MQMD fields and message
+  properties by name, and its bytes as they are on the queue (never converted). Gzip compressed or not;
+  a file cut short is read up to its last whole message. Backups of MQAdminTool and older versions are read.
+- **dmpmqmsg** (`MQApi/Utilities/DmpmqmsgFile`): choose "dmpmqmsg / qload text file" in the backup file
+  chooser; the file loads with `dmpmqmsg -o QUEUE -f file`. Restore reads dmpmqmsg files of every data
+  format (hex, `-dA`, `-dt`, `-dp`), recognized by their content.
+- Removing after a backup, editing a message and restoring are done in units of work
+  (`MQApi/Utilities/UnitOfWork`), committed in steps that follow the MAXUMSGS of the queue manager.
+
+## Configuration and authorities
+
+- Right click on a connected queue manager: **Export configuration (MQSC)**, **Compare with another queue
+  manager** and **Authority records**; on a queue or channel: **Authorities**.
+- The definitions are read with MQSC DISPLAY commands sent to the command server (PCF Escape,
+  `MQApi/Config`), also for queue managers administered through another one; not on z/OS. Passwords
+  are not exported; dates, depths and other state are left out.
+
 ## Security
 
 - **TLS** can be enabled per connection (Edit > Use TLS): TLS 1.2 or higher, TLS 1.3 only or a specific
@@ -101,6 +129,11 @@ QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi
 - PCF agents are kept per queue manager (`MQApi/PCF/PCFAgentPool`) instead of being opened for every command.
 - PCF replies are read with client read ahead (`MQApi/PCF/ReadAheadPCFMessageAgent`).
 - Background tasks apply their results on the Swing event thread (`UI/Helpers/SwingThread`).
+- The message list reads only the first 16 KB of each message, with read ahead: 200 messages of 1 MB
+  are listed in 0.15 s instead of 1.9 s (1.5 s instead of 10.6 s on a link with 40 ms round trip).
+  Total length and data length stay those of the whole message (`MQUtility.DataLength`).
+- The queue manager page sends its 7 commands at once and reads the replies together
+  (`ReadAheadPCFMessageAgent.SendAll`): 70 ms instead of 620 ms on a link with 40 ms round trip.
 
 ## Support the project
 

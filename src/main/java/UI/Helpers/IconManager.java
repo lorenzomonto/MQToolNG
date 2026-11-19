@@ -195,6 +195,22 @@ public class IconManager {
         return icon("pencil", FOREGROUND);
     }
 
+    public ImageIcon ExportConfigIcon(){
+        return icon("file-code", FOREGROUND);
+    }
+
+    public ImageIcon CompareIcon(){
+        return icon("git-compare", FOREGROUND);
+    }
+
+    public ImageIcon AuthorityIcon(){
+        return icon("key-round", FOREGROUND);
+    }
+
+    public ImageIcon CopyIcon(){
+        return icon("copy", FOREGROUND);
+    }
+
     /** A Lucide icon of Resources/Icons drawn in the given color (16 px). */
     public static Icon Named(String name, Color color){
         return selectedCache.computeIfAbsent(name + "@" + Integer.toHexString(color.getRGB()), k -> {

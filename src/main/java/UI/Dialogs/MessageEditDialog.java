@@ -54,6 +54,10 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     // Whole message (headers included) in hexadecimal, for the "Hex" view
     private String hexDump = null;
     private static final int HEX_INDEX = 2;
+    private static final int JSON_INDEX = 3;
+    // The compact original is JSON (sent back compact as JSON), not XML
+    private boolean compactJson = false;
+    private final UI.Misc.MessagePropertiesPanel propertiesPanel = new UI.Misc.MessagePropertiesPanel();
     private static final int HEX_MAX_BYTES = 1024 * 1024;
     byte[] byteContent;
     UI.Misc.XmlEditorKit xmlEditorkit = new UI.Misc.XmlEditorKit(true);
@@ -119,7 +123,14 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
             this.DecodeButton.setEnabled(true);
         }
         this.MessagePanel.setEnabledAt(2, false);
-        
+        // JSON is shown indented, like XML
+        this.ContentTypeSelectComboBox.addItem("JSON");
+        // Wide enough for "JSON" (the form sizes it for three letters)
+        java.awt.Dimension comboSize = new java.awt.Dimension(84, 25);
+        this.ContentTypeSelectComboBox.setPreferredSize(comboSize);
+        this.ContentTypeSelectComboBox.setMinimumSize(comboSize);
+        this.ContentTypeSelectComboBox.setMaximumSize(comboSize);
+        this.MessagePanel.addTab("Properties", propertiesPanel);
     }
     
     private void showMessageDetail(boolean asEBCDIC){
@@ -168,6 +179,9 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
 
     private void showMessage(MQMessage message, boolean asEBCDIC){
         loadMessageMQMD(message);
+        propertiesPanel.Load(message);
+        MessagePanel.setTitleAt(MessagePanel.indexOfComponent(propertiesPanel),
+                propertiesPanel.Count() == 0 ? "Properties" : "Properties (" + propertiesPanel.Count() + ")");
         // Headers that can be read; a damaged one after the DLH does not hide the DLH or the data
         MQUtility.MessageHeaders headers = MQUtility.ParseHeaders(message);
         MQDLH dlh = MQUtility.FindHeader(headers.Headers, MQDLH.class);
@@ -204,8 +218,19 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         }
 
         compactOriginal = null;
+        compactJson = false;
+        propertiesPanel.SetEditable(!readOnlyContent);
         if(readOnlyContent){
             showContent(0, "Text");
+        }
+        else if(UI.Misc.JsonFormat.IsJson(content)){
+            // Compact JSON is indented for reading and sent back compact
+            if(UI.Misc.JsonFormat.IsCompact(content)){
+                compactOriginal = content;
+                compactJson = true;
+                content = UI.Misc.JsonFormat.Pretty(content);
+            }
+            showContent(JSON_INDEX, "Text");
         }
         else if(XMLHelper.IsXML(content)){
             // Compact XML is indented for reading and sent back compact; XML that already has its
@@ -384,7 +409,8 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
                 message.writeString(text);
                 message.format = "MQSTR";
             }
-        } catch (IOException ex) {
+            propertiesPanel.Apply(message);
+        } catch (IOException | MQException ex) {
             Logger.getLogger(MessageEditDialog.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
@@ -399,6 +425,10 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
         }
         if(text.equals(content)){
             return compactOriginal;
+        }
+        if(compactJson){
+            // JSON that is no longer valid after the edit is sent as it was typed
+            return UI.Misc.JsonFormat.IsJson(text) ? UI.Misc.JsonFormat.Compact(text) : text;
         }
         return UI.Misc.XmlSyntax.Compact(text.trim());
     }
@@ -1197,8 +1227,13 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
     }// </editor-fold>//GEN-END:initComponents
 
     private void UpdateButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_UpdateButtonActionPerformed
+        String propertiesProblem = propertiesPanel.Problem();
         if(this.ContentEditorPane.getText().trim().isEmpty()){
              JOptionPane.showMessageDialog(component, "Data field is empty", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+        else if(propertiesProblem != null){
+            MessagePanel.setSelectedComponent(propertiesPanel);
+            JOptionPane.showMessageDialog(component, propertiesProblem, "Error", JOptionPane.ERROR_MESSAGE);
         }
         else{
             updateMessage(message);
@@ -1220,7 +1255,8 @@ public class MessageEditDialog extends ObjectPropertiesDialogBase {
                 this.ContentEditorPane.setContentType("XML");
                 this.ContentEditorPane.setText(content);   
             }
-            else if(ContentTypeSelectComboBox.getSelectedItem().toString() == "Text"){
+            else if(ContentTypeSelectComboBox.getSelectedItem().toString() == "Text"
+                    || ContentTypeSelectComboBox.getSelectedItem().toString() == "JSON"){
 //                content = this.ContentEditorPane.getText();
                 showHex(false);
             }

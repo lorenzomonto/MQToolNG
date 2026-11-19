@@ -45,6 +45,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
     /** What the page asks the main window to do. */
     public interface Actions {
         void Refresh();
+        /** The control of the automatic refresh, shown next to Refresh. */
+        JComponent AutoRefreshButton();
         void ShowProperties();
         void Connect();
         void ShowQueue(String queueName);
@@ -197,6 +199,7 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         refresh.addActionListener(e -> actions.Refresh());
         JButton properties = new JButton("Properties", iconManager.PropertiesIcon());
         properties.addActionListener(e -> actions.ShowProperties());
+        buttons.add(actions.AutoRefreshButton());
         buttons.add(refresh);
         buttons.add(properties);
         header.add(buttons, BorderLayout.EAST);

@@ -2,8 +2,6 @@ package MQApi.Overview;
 
 import MQApi.Logs.LogWriter;
 import MQApi.PCF.MQPCF;
-import MQApi.QueryModel.MQQueueListResult;
-import MQApi.QueryModel.MQQueueListResult.QueueDetailModel;
 import com.ibm.mq.MQQueueManager;
 import com.ibm.mq.constants.MQConstants;
 import com.ibm.mq.headers.pcf.PCFMessage;
@@ -94,18 +92,37 @@ public class QueueManagerOverview {
     public final Map<String, String> Errors = new LinkedHashMap<>();
     public LocalDateTime LoadedAt;
 
-    // DefinitionType text of temporary dynamic queues (see QueueDetailModel)
-    private static final String TEMPORARY_DYNAMIC = "Dynamically defined temporary queue";
     private static final int TOP_QUEUES = 6;
 
+    // The parts of the page: one command each, sent together
+    private static final String[] PARTS = {"Configuration", "Status", "Listeners", "Channels", "Channel status", "Channel authentication", "Queues"};
+
+    /**
+     * Reads the page. All the commands are sent at once and their replies read together: on a slow
+     * link the page costs about one network round trip instead of two per command.
+     */
     public static QueueManagerOverview Load(MQQueueManager queueManager) {
         QueueManagerOverview overview = new QueueManagerOverview();
-        overview.loadConfig(queueManager);
-        overview.loadStatus(queueManager);
-        overview.loadListeners(queueManager);
-        overview.loadChannels(queueManager);
-        overview.loadQueues(queueManager);
-        overview.loadChannelAuth(queueManager);
+        // The queues last: while the queue manager reads them, no request of this page waits on its
+        // command queue (it would count as a queue with messages)
+        PCFMessage[] commands = {configCommand(), statusCommand(), listenersCommand(), channelNamesCommand(),
+            channelStatusCommand(), channelAuthCommand(), queuesCommand()};
+        PCFMessage[][] replies = new PCFMessage[commands.length][];
+        try {
+            replies = MQPCF.SendAll(queueManager, commands);
+        } catch (Exception ex) {
+            LogWriter.WriteToLog("QueueManagerOverview", "Load", ex);
+            for (String part : PARTS) {
+                overview.Errors.put(part, String.valueOf(ex.getMessage()));
+            }
+        }
+        // In the order of the page: the queues need the dead-letter queue name of the configuration
+        overview.loadConfig(overview.checked(replies[0], PARTS[0]));
+        overview.loadStatus(overview.checked(replies[1], PARTS[1]));
+        overview.loadListeners(overview.checked(replies[2], PARTS[2]));
+        overview.loadChannels(overview.checked(replies[3], PARTS[3]), overview.checked(replies[4], PARTS[4]));
+        overview.loadQueues(overview.checked(replies[6], PARTS[6]));
+        overview.loadChannelAuth(overview.checked(replies[5], PARTS[5]));
         overview.LoadedAt = LocalDateTime.now();
         return overview;
     }
@@ -138,21 +155,18 @@ public class QueueManagerOverview {
 
     // --- Loading ---
 
-    private PCFMessage[] send(MQQueueManager queueManager, PCFMessage command, String part) {
-        try {
-            PCFMessage[] responses = MQPCF.Send(queueManager, command);
-            if (responses.length > 0 && responses[0].getCompCode() != MQConstants.MQCC_OK
-                    && responses[0].getReason() != MQConstants.MQRCCF_CHL_STATUS_NOT_FOUND
-                    && responses[0].getReason() != MQConstants.MQRCCF_NONE_FOUND) {
-                Errors.put(part, MQConstants.lookupReasonCode(responses[0].getReason()));
-                return null;
-            }
-            return responses;
-        } catch (Exception ex) {
-            LogWriter.WriteToLog("QueueManagerOverview", part, ex);
-            Errors.put(part, String.valueOf(ex.getMessage()));
+    // The responses of a part, null (and the reason in Errors) when it failed; "none found" is not an error
+    private PCFMessage[] checked(PCFMessage[] responses, String part) {
+        if (responses == null) {
             return null;
         }
+        if (responses.length > 0 && responses[0].getCompCode() != MQConstants.MQCC_OK
+                && responses[0].getReason() != MQConstants.MQRCCF_CHL_STATUS_NOT_FOUND
+                && responses[0].getReason() != MQConstants.MQRCCF_NONE_FOUND) {
+            Errors.put(part, MQConstants.lookupReasonCode(responses[0].getReason()));
+            return null;
+        }
+        return responses;
     }
 
     private static boolean isOk(PCFMessage response) {
@@ -174,26 +188,35 @@ public class QueueManagerOverview {
         }
     }
 
-    private void loadConfig(MQQueueManager queueManager) {
-        PCFMessage[] responses = send(queueManager, new PCFMessage(MQConstants.MQCMD_INQUIRE_Q_MGR), "Configuration");
+    private static PCFMessage configCommand() {
+        return new PCFMessage(MQConstants.MQCMD_INQUIRE_Q_MGR);
+    }
+
+    private void loadConfig(PCFMessage[] responses) {
         if (responses != null && responses.length > 0 && isOk(responses[0])) {
             readParameters(responses[0], Config);
         }
     }
 
-    private void loadStatus(MQQueueManager queueManager) {
+    private static PCFMessage statusCommand() {
         PCFMessage command = new PCFMessage(MQConstants.MQCMD_INQUIRE_Q_MGR_STATUS);
         command.addParameter(MQConstants.MQIACF_Q_MGR_STATUS_ATTRS, new int[]{MQConstants.MQIACF_ALL});
-        PCFMessage[] responses = send(queueManager, command, "Status");
+        return command;
+    }
+
+    private void loadStatus(PCFMessage[] responses) {
         if (responses != null && responses.length > 0 && isOk(responses[0])) {
             readParameters(responses[0], Status);
         }
     }
 
-    private void loadListeners(MQQueueManager queueManager) {
+    private static PCFMessage listenersCommand() {
         PCFMessage command = new PCFMessage(MQConstants.MQCMD_INQUIRE_LISTENER_STATUS);
         command.addParameter(MQConstants.MQCACH_LISTENER_NAME, "*");
-        PCFMessage[] responses = send(queueManager, command, "Listeners");
+        return command;
+    }
+
+    private void loadListeners(PCFMessage[] responses) {
         if (responses == null) {
             return;
         }
@@ -215,10 +238,20 @@ public class QueueManagerOverview {
         }
     }
 
-    private void loadChannels(MQQueueManager queueManager) {
+    private static PCFMessage channelNamesCommand() {
         PCFMessage names = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHANNEL_NAMES);
         names.addParameter(MQConstants.MQCACH_CHANNEL_NAME, "*");
-        PCFMessage[] nameResponses = send(queueManager, names, "Channels");
+        return names;
+    }
+
+    private static PCFMessage channelStatusCommand() {
+        PCFMessage status = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHANNEL_STATUS);
+        status.addParameter(MQConstants.MQCACH_CHANNEL_NAME, "*");
+        status.addParameter(MQConstants.MQIACH_CHANNEL_INSTANCE_ATTRS, new int[]{MQConstants.MQCACH_CHANNEL_NAME, MQConstants.MQIACH_CHANNEL_STATUS});
+        return status;
+    }
+
+    private void loadChannels(PCFMessage[] nameResponses, PCFMessage[] responses) {
         if (nameResponses != null && nameResponses.length > 0 && isOk(nameResponses[0])) {
             Object value = nameResponses[0].getParameterValue(MQConstants.MQCACH_CHANNEL_NAMES);
             if (value instanceof String[]) {
@@ -231,10 +264,6 @@ public class QueueManagerOverview {
                 DefinedChannels = count;
             }
         }
-        PCFMessage status = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHANNEL_STATUS);
-        status.addParameter(MQConstants.MQCACH_CHANNEL_NAME, "*");
-        status.addParameter(MQConstants.MQIACH_CHANNEL_INSTANCE_ATTRS, new int[]{MQConstants.MQCACH_CHANNEL_NAME, MQConstants.MQIACH_CHANNEL_STATUS});
-        PCFMessage[] responses = send(queueManager, status, "Channel status");
         if (responses == null) {
             return;
         }
@@ -266,33 +295,53 @@ public class QueueManagerOverview {
         }
     }
 
-    private void loadQueues(MQQueueManager queueManager) {
-        MQQueueListResult result = MQPCF.GetQueueList(queueManager, "*", null);
-        if (!result.QuerySuccess) {
-            Errors.put("Queues", result.ErrorMessage);
+    // Only the local queues and the 4 attributes the page uses (the queue list reads them all)
+    private static PCFMessage queuesCommand() {
+        PCFMessage command = new PCFMessage(MQConstants.MQCMD_INQUIRE_Q);
+        command.addParameter(MQConstants.MQCA_Q_NAME, "*");
+        command.addParameter(MQConstants.MQIA_Q_TYPE, MQConstants.MQQT_LOCAL);
+        command.addParameter(MQConstants.MQIACF_Q_ATTRS, new int[]{MQConstants.MQCA_Q_NAME, MQConstants.MQIA_CURRENT_Q_DEPTH,
+            MQConstants.MQIA_MAX_Q_DEPTH, MQConstants.MQIA_DEFINITION_TYPE});
+        return command;
+    }
+
+    private void loadQueues(PCFMessage[] responses) {
+        if (responses == null) {
             return;
         }
         String deadLetterName = ConfigText(MQConstants.MQCA_DEAD_LETTER_Q_NAME);
         int locals = 0;
-        for (QueueDetailModel queue : result.DataModels) {
-            if (queue.CurrentQueueDepth == null || queue.Name == null) {
-                continue; // alias, remote and model queues have no depth
+        for (PCFMessage response : responses) {
+            if (!isOk(response)) {
+                continue;
             }
-            if (TEMPORARY_DYNAMIC.equals(queue.DefinitionType)) {
-                continue; // reply queues of running requests, this tool's PCF replies included
+            String name;
+            int current;
+            int max;
+            try {
+                // Reply queues of running requests, this tool's PCF replies included
+                if (response.getIntParameterValue(MQConstants.MQIA_DEFINITION_TYPE) == MQConstants.MQQDT_TEMPORARY_DYNAMIC) {
+                    continue;
+                }
+                name = response.getStringParameterValue(MQConstants.MQCA_Q_NAME).trim();
+                current = response.getIntParameterValue(MQConstants.MQIA_CURRENT_Q_DEPTH);
+                max = response.getIntParameterValue(MQConstants.MQIA_MAX_Q_DEPTH);
+            } catch (Exception ex) {
+                LogWriter.WriteToLog("QueueManagerOverview", "Queues", ex);
+                continue;
             }
             locals++;
-            QueueDepth depth = new QueueDepth(queue.Name, queue.CurrentQueueDepth, queue.MaxQueueDepth != null ? queue.MaxQueueDepth : 0);
+            QueueDepth depth = new QueueDepth(name, current, max);
             if (depth.Current > 0) {
                 QueuesWithMessages++;
             }
-            if (queue.Name.equals(deadLetterName)) {
+            if (name.equals(deadLetterName)) {
                 DeadLetterQueue = depth;
-            } else if (queue.Name.startsWith("SYSTEM.ADMIN.") && queue.Name.endsWith(".EVENT")) {
+            } else if (name.startsWith("SYSTEM.ADMIN.") && name.endsWith(".EVENT")) {
                 if (depth.Current > 0) {
                     EventQueues.add(depth);
                 }
-            } else if (!queue.Name.startsWith("SYSTEM.")) {
+            } else if (!name.startsWith("SYSTEM.")) {
                 ApplicationQueues.add(depth);
                 if (depth.Current > 0) {
                     ApplicationMessages += depth.Current;
@@ -310,10 +359,13 @@ public class QueueManagerOverview {
                 .forEach(TopQueues::add);
     }
 
-    private void loadChannelAuth(MQQueueManager queueManager) {
+    private static PCFMessage channelAuthCommand() {
         PCFMessage command = new PCFMessage(MQConstants.MQCMD_INQUIRE_CHLAUTH_RECS);
         command.addParameter(MQConstants.MQCACH_CHANNEL_NAME, "*");
-        PCFMessage[] responses = send(queueManager, command, "Channel authentication");
+        return command;
+    }
+
+    private void loadChannelAuth(PCFMessage[] responses) {
         if (responses == null) {
             return;
         }

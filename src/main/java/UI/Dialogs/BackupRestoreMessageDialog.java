@@ -37,6 +37,8 @@ public class BackupRestoreMessageDialog extends DialogBase{
 
     public boolean IsBackup;
     String selectedFilePath;
+    // Backup in the text format of IBM dmpmqmsg instead of the MQToolNG message file
+    boolean dmpmqmsgFormat;
     ArrayList<MQMessageIdModel> ids;
     int usageOption;
     
@@ -255,6 +257,7 @@ public class BackupRestoreMessageDialog extends DialogBase{
         boolean isAlias = (QueueType)selectedObject.Type == QueueType.Alias;
         String filter = FilterTextField.getText();
         BackupRestoreMessageTask task = new BackupRestoreMessageTask(queueManager, selectedObject.ObjectName, selectedFilePath, ParentJFrame, ProgressBar, ids, this.usageOption, isCompress,isAlias, removeDLH, removeAfter, filter);
+        task.SetDmpmqmsgFormat(dmpmqmsgFormat);
         task.AddTaskActionSuccessListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -303,20 +306,36 @@ public class BackupRestoreMessageDialog extends DialogBase{
         this.BrowseButton.setEnabled(value);
         this.CancelButton.setEnabled(value);
         this.OkButton.setEnabled(value);
-        this.CompressCheckBox.setEnabled(value);
-        this.RemoveDLHCheckBox.setEnabled(value);
-        this.DeleteAfterCheckBox.setEnabled(value);
+        // The options are only for a backup
+        this.CompressCheckBox.setEnabled(value && usageOption == Usage_Backup && !dmpmqmsgFormat);
+        this.RemoveDLHCheckBox.setEnabled(value && usageOption == Usage_Backup);
+        this.DeleteAfterCheckBox.setEnabled(value && usageOption == Usage_Backup);
     }
     
     private void showFileChooser(){
         JFileChooser fileChooser = new JFileChooser();
-        FileFilter filter = usageOption == Usage_SaveMsgContent ?  new FileNameExtensionFilter("MQ message content file (*.txt)","txt") : new FileNameExtensionFilter("MQ message file (*.msg)","msg");
+        FileFilter dmpmqmsgFilter = new FileNameExtensionFilter("dmpmqmsg / qload text file (*.txt)", "txt");
+        FileFilter filter;
+        if(usageOption == Usage_SaveMsgContent){
+            filter = new FileNameExtensionFilter("MQ message content file (*.txt)","txt");
+        }
+        else if(usageOption == Usage_Restore){
+            // Files of MQToolNG, MQAdminTool and dmpmqmsg are recognized by their content
+            filter = new FileNameExtensionFilter("MQ message file (*.msg, *.txt, *.bak)", "msg", "txt", "bak");
+        }
+        else{
+            filter = new FileNameExtensionFilter("MQ message file (*.msg)","msg");
+            fileChooser.addChoosableFileFilter(dmpmqmsgFilter);
+        }
         fileChooser.setFileFilter(filter);
         fileChooser.setDialogTitle("Please select a file");
         int returnVal = fileChooser.showDialog(this, "Select");
         if(returnVal == JFileChooser.APPROVE_OPTION){ 
+            dmpmqmsgFormat = usageOption == Usage_Backup && fileChooser.getFileFilter() == dmpmqmsgFilter;
+            // A dmpmqmsg file is text: not compressed
+            this.CompressCheckBox.setEnabled(usageOption == Usage_Backup && !dmpmqmsgFormat);
             selectedFilePath = fileChooser.getSelectedFile().getPath();
-            selectedFilePath = checkFilePath(selectedFilePath, usageOption == Usage_SaveMsgContent ? "txt" : "msg");
+            selectedFilePath = checkFilePath(selectedFilePath, usageOption == Usage_SaveMsgContent || dmpmqmsgFormat ? "txt" : "msg");
             this.FilePathTextField.setText(selectedFilePath);
             this.OkButton.setEnabled(true);
         }

@@ -2,11 +2,21 @@ package MQApi.PCF;
 
 import MQApi.Logs.LogWriter;
 import com.ibm.mq.MQException;
+import com.ibm.mq.MQGetMessageOptions;
+import com.ibm.mq.MQMessage;
+import com.ibm.mq.MQPutMessageOptions;
 import com.ibm.mq.MQQueue;
 import com.ibm.mq.MQQueueManager;
 import com.ibm.mq.constants.CMQC;
 import com.ibm.mq.headers.MQDataException;
+import com.ibm.mq.constants.MQConstants;
+import com.ibm.mq.headers.pcf.PCFMessage;
 import com.ibm.mq.headers.pcf.PCFMessageAgent;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * PCFMessageAgent whose reply queue is opened with MQOO_READ_AHEAD.
@@ -62,6 +72,68 @@ public class ReadAheadPCFMessageAgent extends PCFMessageAgent {
         } catch (MQException ex) {
             LogWriter.WriteToLog("ReadAheadPCFMessageAgent", "open", ex);
         }
+    }
+
+    /**
+     * Sends all the commands, then reads all their replies: the requests are put without waiting for
+     * the network (asynchronous put) and the replies arrive together through read ahead, so a group of
+     * commands costs about one network round trip instead of two per command. The responses of each
+     * command are returned in the order of the commands; error responses are returned, not thrown.
+     */
+    public synchronized PCFMessage[][] SendAll(PCFMessage[] commands) throws MQDataException, IOException {
+        Map<String, Integer> commandOfRequest = new HashMap<>();
+        List<List<PCFMessage>> responses = new ArrayList<>();
+        MQPutMessageOptions put = new MQPutMessageOptions();
+        put.options = CMQC.MQPMO_NO_SYNCPOINT | CMQC.MQPMO_NEW_MSG_ID | CMQC.MQPMO_FAIL_IF_QUIESCING | CMQC.MQPMO_ASYNC_RESPONSE;
+        try {
+            for (int i = 0; i < commands.length; i++) {
+                MQMessage request = setRequestMQMD(new MQMessage());
+                // Each request gets its own correlation id, which the command server passes to its replies
+                byte[] correlation = new byte[CMQC.MQ_CORREL_ID_LENGTH];
+                RANDOM.nextBytes(correlation);
+                request.correlationId = correlation;
+                request.report |= CMQC.MQRO_PASS_CORREL_ID;
+                commands[i].write(request);
+                adminQueue.put(request, put);
+                commandOfRequest.put(key(correlation), i);
+                responses.add(new ArrayList<>());
+            }
+            int waiting = commands.length;
+            while (waiting > 0) {
+                MQMessage reply = new MQMessage();
+                MQGetMessageOptions get = new MQGetMessageOptions();
+                get.options = CMQC.MQGMO_WAIT | CMQC.MQGMO_CONVERT | CMQC.MQGMO_NO_SYNCPOINT | CMQC.MQGMO_FAIL_IF_QUIESCING;
+                get.matchOptions = CMQC.MQMO_NONE;
+                get.waitInterval = gmo.waitInterval;
+                replyQueue.get(reply, get);
+                Integer command = commandOfRequest.get(key(reply.correlationId));
+                if (command == null) {
+                    continue; // a late reply to an earlier command
+                }
+                PCFMessage response = new PCFMessage(reply);
+                responses.get(command).add(response);
+                if (response.getControl() == MQConstants.MQCFC_LAST) {
+                    waiting--;
+                }
+            }
+        } catch (MQException ex) {
+            throw MQDataException.getMQDataException(ex);
+        }
+        PCFMessage[][] result = new PCFMessage[commands.length][];
+        for (int i = 0; i < commands.length; i++) {
+            result[i] = responses.get(i).toArray(new PCFMessage[0]);
+        }
+        return result;
+    }
+
+    private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+
+    private static String key(byte[] id) {
+        StringBuilder text = new StringBuilder(id.length * 2);
+        for (byte b : id) {
+            text.append(String.format("%02X", b));
+        }
+        return text.toString();
     }
 
     // The commands go to the command queue of the remote queue manager, through the channels of the

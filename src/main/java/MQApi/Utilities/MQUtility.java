@@ -33,21 +33,14 @@ import com.ibm.mq.headers.MQRFH2;
 import com.ibm.mq.headers.internal.Header;
 import com.ibm.mq.headers.pcf.PCFMessage;
 import com.ibm.mq.headers.pcf.PCFParameter;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
 import java.io.DataInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ObjectInputFilter;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -61,8 +54,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.*;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 import javax.swing.JProgressBar;
 
 /**
@@ -72,6 +63,11 @@ import javax.swing.JProgressBar;
 public class MQUtility {
     
     private static int messageListDataLength = 50;
+    /**
+     * Bytes read of each message for the message list: enough for the headers and the preview, without
+     * transferring large messages. The lengths shown stay those of the whole message.
+     */
+    static final int LIST_BUFFER = 16384;
 
     public static boolean PutMessage(MQQueueManager queueManager, String queueName, MQMessage message){    
         MQQueue queue = null;
@@ -146,46 +142,153 @@ public class MQUtility {
         return message;                
     }
     
-    /** Replaces the message read with oldId (its token, when known, removes exactly that message) with the edited one. */
+    /**
+     * Replaces the message read with oldId (its token, when known, removes exactly that message) with the
+     * edited one, in one unit of work: if the put fails, the old message stays on the queue.
+     */
     public static void UpdateMessage(MQQueueManager queueManager, String queueName, MQMessage message, MQMessageIdModel oldId) throws MQException{
-        MQQueue queue = null;
-        MQPutMessageOptions options = new MQPutMessageOptions();
-        options.options = CMQC.MQPMO_SET_ALL_CONTEXT;
-        try{
-            ComsumeSelectedMessages(queueManager, queueName, oldId);
+        queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
+        synchronized(UnitOfWork.Lock(queueManager)){
+            MQQueue queue = null;
+            try{
+                queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_INPUT_SHARED | CMQC.MQOO_OUTPUT | CMQC.MQOO_SET_ALL_CONTEXT);
+                removeUnderSyncpoint(queue, oldId);
+                queue.put(message, syncpointPutOptions());
+                queueManager.commit();
+            }
+            catch(MQException ex){
+                LogWriter.WriteToLog("MQUtility", "UpdateMessage", ex);
+                UnitOfWork.Backout(queueManager);
+                throw ex;
+            }
+            finally{
+                closeQueue(queue);
+            }
         }
-        catch(MQException ex){
-            LogWriter.WriteToLog("MQUtility", "UpdateMessage", ex);
-            closeQueue(queue);
-            throw ex;
-        }
-        try {            
-            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | CMQC.MQOO_OUTPUT | CMQC.MQOO_SET_ALL_CONTEXT);
-            queue.put(message, options);
-        } catch (MQException ex) {
-            LogWriter.WriteToLog("MQUtility", "UpdateMessage", ex);
-            closeQueue(queue);
-            throw ex;           
-        }
-        closeQueue(queue);              
     }
 
+    /**
+     * Replaces the message with the edited one at the same position: the messages after it are taken
+     * and put again after the edited one, all in one unit of work. If something fails, or the
+     * program stops, the queue manager puts everything back as it was. The messages keep their
+     * properties and context.
+     */
     public static void UpdateMessageToSamePosition(MQQueueManager queueManager, String queueName, MQMessage message, MQMessageIdModel id) throws MQException, Exception{
-        String fileName = "UpdateTemp.msg";
-        BackupAndRemoveMessageFromSelectedPosition(queueManager, queueName, fileName, id);
+        queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
+        synchronized(UnitOfWork.Lock(queueManager)){
+            MQQueue queue = null;
+            try{
+                queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | CMQC.MQOO_INPUT_SHARED | CMQC.MQOO_OUTPUT | CMQC.MQOO_SET_ALL_CONTEXT);
+                List<MQMessageIdModel> after = messagesAfter(queue, id);
+                removeUnderSyncpoint(queue, id);
+                MQPutMessageOptions putOptions = syncpointPutOptions();
+                queue.put(message, putOptions);
+                for(MQMessageIdModel next : after){
+                    MQMessage moved = new MQMessage();
+                    MQGetMessageOptions getOptions = new MQGetMessageOptions();
+                    getOptions.options = CMQC.MQGMO_SYNCPOINT;
+                    try{
+                        getSelectedMessage(queue, moved, getOptions, next, null);
+                    }
+                    catch(MQException ex){
+                        if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
+                            // Taken by an application in the meantime
+                            continue;
+                        }
+                        throw ex;
+                    }
+                    queue.put(moved, putOptions);
+                }
+                queueManager.commit();
+            }
+            catch(MQException ex){
+                LogWriter.WriteToLog("MQUtility", "UpdateMessageToSamePosition", ex);
+                UnitOfWork.Backout(queueManager);
+                if(ex.getReason() == MQConstants.MQRC_SYNCPOINT_LIMIT_REACHED){
+                    throw new Exception("Too many messages after this one to keep its position in one unit of work "
+                            + "(MAXUMSGS of the queue manager): the queue is unchanged. Update it without 'Keep position'.");
+                }
+                throw ex;
+            }
+            finally{
+                closeQueue(queue);
+            }
+        }
+    }
+
+    // The messages after the one with the id, in queue order (only their ids are read)
+    private static List<MQMessageIdModel> messagesAfter(MQQueue queue, MQMessageIdModel id) throws MQException{
+        List<MQMessageIdModel> after = new ArrayList<>();
+        MQMessage message = new MQMessage();
+        MQGetMessageOptions options = new MQGetMessageOptions();
+        options.options = CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
         try{
-            UpdateMessage(queueManager, queueName, message, id);
+            getSelectedMessage(queue, message, options, id, 0);
         }
         catch(MQException ex){
-            LogWriter.WriteToLog("MQUtility", "UpdateMessageToSamePosition", ex);
-            RestoreMessageFromFile(queueManager, queueName, fileName, null, false, false);
-            removeFile(fileName);  
+            if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                throw ex;
+            }
+        }
+        options.matchOptions = CMQC.MQMO_NONE;
+        while(true){
+            resetMessage(message);
+            try{
+                queue.get(message, options, 0);
+            }
+            catch(MQException ex){
+                if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
+                    break;
+                }
+                if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                    throw ex;
+                }
+            }
+            after.add(idOf(message, options));
+        }
+        return after;
+    }
+
+    private static MQMessageIdModel idOf(MQMessage message, MQGetMessageOptions options){
+        MQMessageIdModel id = new MQMessageIdModel();
+        id.MessageId = message.messageId.clone();
+        id.CorrelationdId = message.correlationId.clone();
+        id.MessageToken = options.msgToken != null ? options.msgToken.clone() : null;
+        return id;
+    }
+
+    // Gets the message destructively under syncpoint, without reading its data; false when it is no longer on the queue
+    private static boolean removeUnderSyncpoint(MQQueue queue, MQMessageIdModel id) throws MQException{
+        MQMessage message = new MQMessage();
+        MQGetMessageOptions options = new MQGetMessageOptions();
+        options.options = CMQC.MQGMO_SYNCPOINT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
+        try{
+            getSelectedMessage(queue, message, options, id, 0);
+        }
+        catch(MQException ex){
+            if(ex.getReason() == MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                return true;
+            }
+            if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
+                return false;
+            }
             throw ex;
         }
-        RestoreMessageFromFile(queueManager, queueName, fileName, null, false, false);
-        removeFile(fileName);            
+        return true;
     }
-    
+
+    private static MQPutMessageOptions syncpointPutOptions(){
+        MQPutMessageOptions options = new MQPutMessageOptions();
+        options.options = CMQC.MQPMO_SET_ALL_CONTEXT | CMQC.MQPMO_SYNCPOINT;
+        return options;
+    }
+
+    private static void progress(JProgressBar progressBar, int from, int to, int done, int total){
+        if(progressBar != null && total > 0){
+            progressBar.setValue(from + (to - from) * Math.min(done, total) / total);
+        }
+    }
+
     public static MQMessageListResult GetMessageList(MQQueueManager queueManager, String queueName, int numOfMessageRequired,boolean isAlias){
         return GetMessageList(queueManager, queueName, numOfMessageRequired, isAlias, null, 0);
     }
@@ -197,20 +300,21 @@ public class MQUtility {
             if(isAlias){
                 queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
             }
-            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE);
+            queue = openToBrowse(queueManager, queueName);
             int queueDepth = queue.getCurrentDepth();
             int index = numOfMessageRequired > 0 &&  numOfMessageRequired < (queueDepth - fromPosition + 1) ? numOfMessageRequired : (queueDepth - fromPosition + 1);
             int position = fromPosition;
             MQMessage message = new MQMessage();
             MQGetMessageOptions options = new MQGetMessageOptions();
-            options.options = CMQC.MQGMO_BROWSE_NEXT;
+            options.options = CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
             options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
             if(fromId != null){
                 try{
-                    getSelectedMessage(queue, message, options, fromId, null);
+                    // Only the browse cursor is needed: no data
+                    getSelectedMessage(queue, message, options, fromId, 0);
                 }
                 catch(MQException ex){
-                    if(!setQueueCursor(queue, fromPosition)){
+                    if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED && !setQueueCursor(queue, fromPosition)){
                         closeQueue(queue);
                         return result;
                     }                                        
@@ -218,12 +322,17 @@ public class MQUtility {
             }
             while(index > 0){ 
                 resetMessage(message);
+                boolean truncated = false;
                 try{
-                    queue.get(message, options);
+                    queue.get(message, options, LIST_BUFFER);
                 }
                 catch(MQException ex){
                     if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
                         break;
+                    }
+                    else if(ex.getReason() == MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                        // A large message: its first LIST_BUFFER bytes are enough for the list
+                        truncated = true;
                     }
                     else{
                         LogWriter.WriteToLog("MQUtility", "GetMessageList", ex);
@@ -231,7 +340,7 @@ public class MQUtility {
                     }
                 }
                 index--;
-                MessageDetailModel model = turnToMessageModel(result, message, position);
+                MessageDetailModel model = turnToMessageModel(result, message, position, truncated ? LIST_BUFFER : 0);
                 model.MessageToken = options.msgToken != null ? options.msgToken.clone() : null;
                 result.DataModels.add(model);
                 position ++;
@@ -246,6 +355,23 @@ public class MQUtility {
         closeQueue(queue);
         result.QuerySuccess = true;
         return result;
+    }
+
+    /**
+     * Opens the queue to browse it with read ahead: the queue manager sends the next (non persistent)
+     * messages before they are asked for, instead of one network round trip per message. A queue
+     * manager that does not accept it (older than MQ 7) gets the usual open.
+     */
+    private static MQQueue openToBrowse(MQQueueManager queueManager, String queueName) throws MQException{
+        try{
+            return queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | CMQC.MQOO_READ_AHEAD);
+        }
+        catch(MQException ex){
+            if(ex.getReason() != MQConstants.MQRC_OPTIONS_ERROR && ex.getReason() != MQConstants.MQRC_OPTION_NOT_VALID_FOR_TYPE){
+                throw ex;
+            }
+            return queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE);
+        }
     }
 
     public static void ComsumeMessagesThread(MQQueueManager queueManager, String queueName, boolean forceOpenGet, boolean isAlias, Observer observer){
@@ -537,133 +663,152 @@ public class MQUtility {
             return msg;
     }
 
-    public static void BackupMessageToFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, ArrayList<MQMessageIdModel>ids, boolean isCompress, boolean isAlias, boolean removeDLH, boolean removeAfter, String filterString) throws Exception{
-            FileOutputStream fileOutPutStream = null;
-            BufferedOutputStream bufferedOutputStream = null;
-            ObjectOutputStream  objectOutputStream = null;
-            GZIPOutputStream gzipOutStream = null;            
-            MQQueue queue = null;
-            if(isAlias)
-                queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
+    /**
+     * Saves messages of the queue to a message file: all of them, the ones with the ids, or the ones
+     * whose text contains filterString. With removeAfter, the saved messages (and only those) are removed
+     * once the whole file is on the disk, in units of work: whatever fails, each message is in the file,
+     * on the queue, or both. Returns the number of messages saved.
+     */
+    public static int BackupMessageToFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, ArrayList<MQMessageIdModel>ids, boolean isCompress, boolean isAlias, boolean removeDLH, boolean removeAfter, String filterString) throws Exception{
+        return BackupMessageToFile(queueManager, queueName, filePath, progressBar, ids, isCompress, isAlias, removeDLH, removeAfter, filterString, false);
+    }
+
+    /** As above; dmpmqmsg true writes a file of IBM dmpmqmsg, with the message properties in an MQRFH2 header. */
+    public static int BackupMessageToFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, ArrayList<MQMessageIdModel>ids, boolean isCompress, boolean isAlias, boolean removeDLH, boolean removeAfter, String filterString, boolean dmpmqmsg) throws Exception{
+        if(isAlias){
+            queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
+        }
+        MQQueue queue = null;
+        List<MQMessageIdModel> saved = new ArrayList<>();
+        int savedEnd = removeAfter ? 50 : 100;
+        try{
+            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | (removeAfter ? CMQC.MQOO_INPUT_SHARED : 0));
+            int queueDepth = queue.getCurrentDepth();
+            if(queueDepth == 0){
+                throw new Exception("Queue depth is 0");
+            }
+            String queueManagerName = MQApi.Connection.MQConnection.QueueManagerName(queueManager);
+            // dmpmqmsg keeps the message properties in the data, as an MQRFH2 header
+            int properties = dmpmqmsg ? CMQC.MQGMO_PROPERTIES_FORCE_MQRFH2 : 0;
+            try(MessageFile.Output writer = dmpmqmsg
+                    ? new DmpmqmsgFile.Writer(filePath, queueName, queueManagerName, "MQToolNG")
+                    : new MessageFile.Writer(filePath, isCompress, queueName, queueManagerName)){
+                if(ids == null){
+                    MQGetMessageOptions options = new MQGetMessageOptions();
+                    options.options = CMQC.MQGMO_BROWSE_NEXT | properties;
+                    options.matchOptions = CMQC.MQMO_NONE;
+                    int read = 0;
+                    while(true){
+                        MQMessage message = new MQMessage();
+                        try{
+                            queue.get(message, options);
+                        }
+                        catch(MQException ex){
+                            if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
+                                break;
+                            }
+                            throw ex;
+                        }
+                        if(filterString == null || filterString.isEmpty() || GetMessageStringContent(message, null).contains(filterString)){
+                            writer.Write(removeDLH ? RemoveMQDLH(message) : message);
+                            saved.add(idOf(message, options));
+                        }
+                        progress(progressBar, 0, savedEnd, ++read, queueDepth);
+                    }
+                }
+                else{
+                    for(MQMessageIdModel id : ids){
+                        MQMessage message = new MQMessage();
+                        MQGetMessageOptions options = new MQGetMessageOptions();
+                        options.options = CMQC.MQGMO_BROWSE_NEXT | properties;
+                        getSelectedMessage(queue, message, options, id, null);
+                        writer.Write(removeDLH ? RemoveMQDLH(message) : message);
+                        saved.add(id);
+                        progress(progressBar, 0, savedEnd, saved.size(), ids.size());
+                    }
+                }
+                writer.Finish();
+            }
+        }
+        catch(IOException ex){
+            LogWriter.WriteToLog("MQUtility", "BackupMessageToFile",ex);
+            closeQueue(queue);
+            removeFile(filePath);
+            throw new Exception("File access error: " + ex.getMessage());
+        }
+        catch(MQException ex){
+            LogWriter.WriteToLog("MQUtility", "BackupMessageToFile",ex);
+            closeQueue(queue);
+            removeFile(filePath);
+            throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason()));
+        }
+        catch(Exception ex){
+            closeQueue(queue);
+            throw ex;
+        }
+        try{
+            if(removeAfter){
+                removeSaved(queueManager, queue, saved, progressBar);
+            }
+        }
+        finally{
+            closeQueue(queue);
+        }
+        if(progressBar != null){
+            progressBar.setValue(100);
+        }
+        return saved.size();
+    }
+
+    // Removes the saved messages in units of work; the file already contains all of them
+    private static void removeSaved(MQQueueManager queueManager, MQQueue queue, List<MQMessageIdModel> saved, JProgressBar progressBar) throws Exception{
+        int removed = 0;
+        synchronized(UnitOfWork.Lock(queueManager)){
+            int pending = 0;
+            int batch = UnitOfWork.BATCH;
             try{
-                queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | CMQC.MQOO_INPUT_SHARED);
-                int queueDepth = queue.getCurrentDepth();            
-                if(queueDepth > 0){
-                    fileOutPutStream = new FileOutputStream(filePath);
-                    bufferedOutputStream = new BufferedOutputStream(fileOutPutStream);
-                    if(isCompress == true){
-                        gzipOutStream = new GZIPOutputStream(bufferedOutputStream);
-                        objectOutputStream = new ObjectOutputStream(gzipOutStream);
+                for(MQMessageIdModel id : saved){
+                    boolean taken;
+                    try{
+                        taken = removeUnderSyncpoint(queue, id);
                     }
-                    else{
-                        objectOutputStream = new ObjectOutputStream(bufferedOutputStream);
-                    }
-                    objectOutputStream.writeObject("MQAdminToolQueueDataFile");
-                    objectOutputStream.writeInt(0x10001);
-                    objectOutputStream.writeObject(queueName);
-                    objectOutputStream.writeInt(ids == null? queueDepth : ids.size());
-                    int index = queueDepth;
-                    if(ids == null){
-                        while(index > 0){
-                            MQMessage message = new MQMessage();
-                            MQGetMessageOptions options = new MQGetMessageOptions();
-                           
-                            options.options = CMQC.MQGMO_BROWSE_NEXT;
- 
-                            try{
-                                queue.get(message, options);
-                                
-                            }
-                            catch(MQException ex){
-                                if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
-                                    if(progressBar != null){
-                                        progressBar.setValue(100);
-                                    }
-                                    break;
-                                }
-                                else{
-                                    throw ex;
-                                }
-                            }
-                            if(removeDLH){
-                                message = RemoveMQDLH(message);
-                            }
-                            if(filterString != null && !filterString.isEmpty()){
-                                String content = message.readStringOfByteLength(message.getDataLength());
-                                if(content.contains(filterString)){
-                                    writeMessageToStream(message, objectOutputStream);
-                                }                                
-                            }
-                            else{                           
-                                writeMessageToStream(message, objectOutputStream);
-                            }
-                            if(removeAfter){
-                                 resetMessage(message);
-                                 options.options = CMQC.MQGMO_MSG_UNDER_CURSOR;
-                                 queue.get(message, options);                                
-                            }
-                            index--;
-                            if(progressBar != null){
-                                int value = ((queueDepth - index)*100)/queueDepth;
-                                progressBar.setValue(value);
-                            }
+                    catch(MQException ex){
+                        if(ex.getReason() != MQConstants.MQRC_SYNCPOINT_LIMIT_REACHED || pending == 0){
+                            throw ex;
                         }
+                        // MAXUMSGS of the queue manager is lower than BATCH: units of work of this size
+                        queueManager.commit();
+                        removed += pending;
+                        batch = pending;
+                        pending = 0;
+                        taken = removeUnderSyncpoint(queue, id);
                     }
-                    else{
-                        int i = 1;
-                        for(MQMessageIdModel id : ids){
-                            MQMessage message = new MQMessage();
-                            MQGetMessageOptions options = new MQGetMessageOptions();
-                            options.options = CMQC.MQGMO_BROWSE_NEXT;
-                            getSelectedMessage(queue, message, options, id, null);
-                            if(removeDLH){
-                                message = RemoveMQDLH(message);
-                            }
-                            writeMessageToStream(message, objectOutputStream);
-                            if(removeAfter){
-                                 resetMessage(message);
-                                 options.options = CMQC.MQGMO_MSG_UNDER_CURSOR;
-                                 queue.get(message, options);                                
-                            }
-                            if(progressBar != null){
-                                int value = (i*100)/ids.size();
-                                progressBar.setValue(value);
-                            }  
-                            i++;
-                        }
+                    if(taken){
+                        pending++;
                     }
-                    closeQueue(queue);
-                    objectOutputStream.flush();
-                    if(gzipOutStream != null){
-                        gzipOutStream.flush();
+                    if(pending == batch){
+                        queueManager.commit();
+                        removed += pending;
+                        pending = 0;
                     }
-                    bufferedOutputStream.flush();
-                    disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream,gzipOutStream, objectOutputStream);
+                    progress(progressBar, 50, 100, removed + pending, saved.size());
                 }
-                else {
-                    closeQueue(queue);
-                    throw new Exception("Queue depth is 0");
-                }
-            }catch(IOException ex){
-                LogWriter.WriteToLog("MQUtility", "BackupMessageToFile",ex);
-                disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream, gzipOutStream, objectOutputStream);
-                removeFile(filePath);
-                closeQueue(queue);
-                throw new Exception("File access error");
+                queueManager.commit();
+                removed += pending;
             }
             catch(MQException ex){
-                LogWriter.WriteToLog("MQUtility", "BackupMessageToFile",ex);
-                disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream, gzipOutStream, objectOutputStream);
-                removeFile(filePath);
-                closeQueue(queue);
-                throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason()));                
+                LogWriter.WriteToLog("MQUtility", "BackupMessageToFile (remove)", ex);
+                UnitOfWork.Backout(queueManager);
+                throw new Exception("All " + saved.size() + " messages are in the file, but only " + removed
+                        + " were removed from the queue, the others are still on it: " + getMQReturnMessage(ex.getCompCode(), ex.getReason()));
             }
-    
-        
+        }
+        LogWriter.WriteActivityToLog("MQUtility (BackupMessageToFile) : Removed " + removed + " msgs after saving them");
     }
     
     public static void SaveMessageContentToFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, ArrayList<MQMessageIdModel>ids) throws Exception{
-            BufferedWriter out = new BufferedWriter(new FileWriter(new File(filePath)));
+            // The text of each message, decoded from its own character set, always written as UTF-8
+            BufferedWriter out = new BufferedWriter(new FileWriter(new File(filePath), StandardCharsets.UTF_8));
             MQQueue queue = null;
             try{
                 queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE);
@@ -766,105 +911,99 @@ public class MQUtility {
             + "sun.util.calendar.ZoneInfo;[B;[I;[Z;"
             + "maxdepth=20;maxarray=10000000;!*");
 
-    public static void RestoreMessageFromFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, boolean isAlias, boolean checkQueueDepth) throws Exception{
-        FileInputStream fileInputStream = null;
-        ObjectInputStream objectInputStream = null;  
-        GZIPInputStream gzipInStream = null;
-        BufferedInputStream bufferedInputStream = null;
+    /** Messages put by a restore, and whether the file was read to its end. */
+    public static class RestoreResult {
+        public int Restored;
+        public boolean Complete;
+    }
+
+    /**
+     * Puts the messages of a message file (of any version) on the queue with their context and
+     * properties, in units of work: after an error no message of the unit that failed is left on the queue.
+     */
+    public static RestoreResult RestoreMessageFromFile(MQQueueManager queueManager, String queueName, String filePath, JProgressBar progressBar, boolean isAlias, boolean checkQueueDepth) throws Exception{
+        if(isAlias){
+            queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);
+        }
+        RestoreResult result = new RestoreResult();
         MQQueue queue = null;
-        if(isAlias)
-            queueName = MQPCF.ResolveAliasBaseQueueName(queueManager, queueName);        
-        try {
-            try{
-                fileInputStream = new FileInputStream(filePath);
-                bufferedInputStream = new BufferedInputStream(fileInputStream);
-                gzipInStream = new GZIPInputStream(bufferedInputStream);
-                objectInputStream = new ObjectInputStream(gzipInStream);
-            }catch(Exception ex){
-                disposeInputStreamObject(fileInputStream,bufferedInputStream,gzipInStream, objectInputStream);
-                fileInputStream = new FileInputStream(filePath);
-                bufferedInputStream = new BufferedInputStream(fileInputStream);
-                objectInputStream = new ObjectInputStream(bufferedInputStream);
-            }
-            objectInputStream.setObjectInputFilter(BACKUP_FILE_FILTER);
-            
-            try {
-                String fileIdentifier = (String)objectInputStream.readObject();
-                int intIdentifier = objectInputStream.readInt();
-                if(fileIdentifier == null || !fileIdentifier.equals("MQAdminToolQueueDataFile") || intIdentifier != 0x10001){
-                    throw new Exception("Not a valid messagae data file");
-                }
-            } catch (Exception ex) {
-                throw new Exception("Not a valid messagae data file");
-            }
-            String originalQueueName = (String)objectInputStream.readObject();
-            int totalNumOfMessages = objectInputStream.readInt();                  
-            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_OUTPUT | CMQC.MQOO_SET_ALL_CONTEXT | CMQC.MQOO_INPUT_SHARED);
+        try(MessageFile.Input reader = MessageFile.OpenAny(filePath)){
+            int total = MessageFile.CountAny(filePath);
+            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_OUTPUT | CMQC.MQOO_SET_ALL_CONTEXT);
             if(checkQueueDepth){
+                int available = Integer.MAX_VALUE;
                 try{
-                    int curDepth = queue.getCurrentDepth();
-                    int maxDepth = queue.getMaximumDepth();                
-                    int availableMsgNum = maxDepth - curDepth;
-                    if(totalNumOfMessages > availableMsgNum ){
-                        closeQueue(queue);
-                        throw new Exception("Not enough avaliable queue depth");
-                    }
+                    available = queue.getMaximumDepth() - queue.getCurrentDepth();
                 }
                 catch(MQException ex){
-
+                    // Not a local queue: the depth is not known
+                }
+                if(total > available){
+                    throw new Exception("Not enough available queue depth");
                 }
             }
-            MQPutMessageOptions option = new MQPutMessageOptions();
-            option.options = CMQC.MQPMO_SET_ALL_CONTEXT;
-            for(int i = 0; i < totalNumOfMessages; i++){
+            MQPutMessageOptions options = syncpointPutOptions();
+            synchronized(UnitOfWork.Lock(queueManager)){
+                int pending = 0;
+                int batch = UnitOfWork.BATCH;
                 try{
-                    MQMessage message = readMessageFromStream(objectInputStream);
-                    if(message.format != null && message.format.contains("MQXMIT")){
-                        Field versionField = message.getClass().getSuperclass().getDeclaredField("version");
-                        versionField.setAccessible(true);
-                        versionField.set(message, 1);
+                    MQMessage message;
+                    while((message = reader.Next()) != null){
+                        if(message.format != null && message.format.contains("MQXMIT")){
+                            Field versionField = message.getClass().getSuperclass().getDeclaredField("version");
+                            versionField.setAccessible(true);
+                            versionField.set(message, 1);
+                        }
+                        try{
+                            queue.put(message, options);
+                        }
+                        catch(MQException ex){
+                            if(ex.getReason() != MQConstants.MQRC_SYNCPOINT_LIMIT_REACHED || pending == 0){
+                                throw ex;
+                            }
+                            // MAXUMSGS of the queue manager is lower than BATCH: units of work of this size
+                            queueManager.commit();
+                            result.Restored += pending;
+                            batch = pending;
+                            pending = 0;
+                            queue.put(message, options);
+                        }
+                        pending++;
+                        if(pending == batch){
+                            queueManager.commit();
+                            result.Restored += pending;
+                            pending = 0;
+                        }
+                        progress(progressBar, 0, 100, result.Restored + pending, total);
                     }
-                    queue.put(message, option);
-                    if(progressBar != null){
-                        int value = ((i + 1) * 100)/totalNumOfMessages;
-                        progressBar.setValue(value);
-                    }
+                    queueManager.commit();
+                    result.Restored += pending;
                 }
-                catch(IOException | ClassNotFoundException | MQException ex){ 
-//                    if(ex instanceof MQException){
-//                        MQException mqEx = (MQException)ex;
-//                        if(mqEx.reasonCode == 2142){
-//                            continue;
-//                        }
-//                    }
-                    if(progressBar != null){
-                        progressBar.setValue(100);
-                    }
-                    if(ex instanceof EOFException){
-                        break;
-                    }
-                    else{
-                        throw ex;
-                    }
+                catch(MQException | IOException | ReflectiveOperationException ex){
+                    LogWriter.WriteToLog("MQUtility", "RestoreMessageFromFile", ex);
+                    UnitOfWork.Backout(queueManager);
+                    String reason = ex instanceof MQException ? getMQReturnMessage(((MQException) ex).getCompCode(), ((MQException) ex).getReason()) : ex.getMessage();
+                    throw new Exception(result.Restored == 0 ? reason
+                            : result.Restored + " messages were restored, the next ones were not: " + reason);
                 }
-
             }
-            closeQueue(queue);
-            disposeInputStreamObject(fileInputStream,bufferedInputStream,gzipInStream, objectInputStream);
-
+            result.Complete = reader.Complete();
         }
-        catch (IOException | ClassNotFoundException ex){
-            LogWriter.WriteToLog("MQUtility", "RestoreMessageFromFile",ex);
-            disposeInputStreamObject(fileInputStream,bufferedInputStream,gzipInStream, objectInputStream);
-            closeQueue(queue);
-            throw new Exception("File access or format error");
+        catch(IOException ex){
+            LogWriter.WriteToLog("MQUtility", "RestoreMessageFromFile", ex);
+            throw new Exception(ex instanceof java.io.FileNotFoundException ? "File not found: " + filePath : ex.getMessage());
         }
         catch(MQException ex){
-            LogWriter.WriteToLog("MQUtility", "RestoreMessageFromFile",ex);
-            disposeInputStreamObject(fileInputStream,bufferedInputStream,gzipInStream, objectInputStream);
-            closeQueue(queue);
-            throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason())); 
+            LogWriter.WriteToLog("MQUtility", "RestoreMessageFromFile", ex);
+            throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason()));
         }
+        finally{
+            closeQueue(queue);
+        }
+        if(progressBar != null){
+            progressBar.setValue(100);
+        }
+        return result;
     }
   
     public static String BytesToHex(byte[] bytes) {
@@ -902,32 +1041,12 @@ public class MQUtility {
         return null;          
     }
     
+    /**
+     * The message without its dead-letter header: the bytes after the DLH are kept as they are, with
+     * the format, encoding and CCSID the DLH gives for them (they may differ from the MQMD ones, which
+     * describe the DLH). A message without a DLH is returned unchanged.
+     */
     public static MQMessage RemoveMQDLH(MQMessage message){
-        try {
-            MQHeaderList list = new MQHeaderList(message, true);
-            if(list.size() > 0 && list.indexOf("MQDLH") >= 0){
-                MQDLH dlh = (MQDLH) list.get(list.indexOf("MQDLH"));
-                String originalFormat = dlh.getFormat();
-                list.remove(dlh);
-                MQMessage newMessage = new MQMessage();
-                copyMessageMQMD(newMessage, message);
-                list.write(newMessage, true);
-                //newMessage.format = !list.getFormat().trim().contains( "MQDEAD") ? list.getFormat() : null;   
-                newMessage.format = originalFormat; 
-                return newMessage;
-            }
-        } catch (MQDataException ex) {
-            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-        } catch(Exception ex){
-            // A header after the DLH cannot be read: the DLH is removed alone, the rest is kept as it is
-            return removeDLHOnly(message);
-        }
-        return message;
-    }
-
-    private static MQMessage removeDLHOnly(MQMessage message){
         try {
             message.seek(0);
             List<MQHeader> headers = ReadHeaders(message);
@@ -941,6 +1060,7 @@ public class MQUtility {
             message.readFully(rest);
             MQMessage newMessage = new MQMessage();
             copyMessageMQMD(newMessage, message);
+            MessageFile.CopyProperties(message, newMessage);
             // The DLH describes the data after it
             newMessage.format = dlh.getFormat();
             newMessage.encoding = dlh.getEncoding();
@@ -1179,8 +1299,9 @@ public class MQUtility {
     }
 
     /** The data column of the message list: the start of the text, or of the bytes for binary data. */
-    private static String listPreview(MQMessage message){
-        String pcf = DecodePcf(message);
+    private static String listPreview(MQMessage message, boolean truncated){
+        // PCF is decoded only whole; a truncated one is shown as data
+        String pcf = truncated ? null : DecodePcf(message);
         if(pcf != null){
             // The first line: type and command
             return "PCF " + pcf.substring(0, pcf.indexOf('\n'));
@@ -1395,13 +1516,27 @@ public class MQUtility {
     
 //private
     private static MessageDetailModel turnToMessageModel(MQMessageListResult result, MQMessage message, int position){
+        return turnToMessageModel(result, message, position, 0);
+    }
+
+    /**
+     * Length of the message data (without the message properties) also when only its start was read:
+     * the properties take their part of the buffer, so the data is the total length minus that part.
+     * truncatedAt: the buffer length of a truncated read, 0 when the whole message was read.
+     */
+    static int DataLength(int totalLength, int bytesRead, int truncatedAt){
+        return truncatedAt > 0 ? totalLength - (truncatedAt - bytesRead) : bytesRead;
+    }
+
+    private static MessageDetailModel turnToMessageModel(MQMessageListResult result, MQMessage message, int position, int truncatedAt){
         MessageDetailModel model = result.new MessageDetailModel();
         model.MessageId = message.messageId;
         model.CorrelationId = message.correlationId;
         model.ApplicationIdentifyData = message.applicationIdData.trim();
         model.ApplicationOriginalData = message.applicationOriginData.trim();
         try {
-            model.DataLength = Integer.toString(message.getDataLength());
+            // The length read, wherever the message is positioned (the search has already read it)
+            model.DataLength = Integer.toString(DataLength(message.getTotalMessageLength(), message.getMessageLength(), truncatedAt));
         } catch (IOException ex) {
             model.DataLength = "0";
             Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
@@ -1423,7 +1558,7 @@ public class MQUtility {
         model.AccountToken = BytesToHex(message.accountingToken);
         model.MessageIdString = BytesToHex(message.messageId);
         model.Offset = message.offset;
-        model.MessageData = listPreview(message);
+        model.MessageData = listPreview(message, truncatedAt > 0);
         //model.MessageFullData = GetMessageStringContent(message, null);
         model.GroupIDString = BytesToHex(message.groupId);
         model.BackoutCount = message.backoutCount;
@@ -1445,50 +1580,6 @@ public class MQUtility {
         }
     }
 
-    private static MQMessage readMessageFromStream(ObjectInputStream stream) throws IOException, ClassNotFoundException{
-        MQMessage message = new MQMessage();
-        for(Field field : message.getClass().getFields()){
-            if(Modifier.isPublic(field.getModifiers()) && !Modifier.isStatic(field.getModifiers()) && field.getName() != "unmappableAction"){
-                try {
-                    field.set(message, stream.readObject());                    
-                } catch (IOException | ClassNotFoundException | IllegalArgumentException | IllegalAccessException ex) {
-                    continue;
-                }
-            }
-        }
-        int i = stream.readInt();
-        byte buff[] = new byte[i];
-        stream.readFully(buff);
-        message.write(buff);
-        return message;
-    }
-    
-    private static void writeMessageToStream(MQMessage message, ObjectOutputStream stream){
-        
-        try
-        {
-            for(Field field : message.getClass().getFields()){
-                if(Modifier.isPublic(field.getModifiers()) && !Modifier.isStatic(field.getModifiers()) && field.getName() != "unmappableAction"){
-                    try {
-                        Object value = field.get(message);
-                        stream.writeObject(value);
-                    } catch (IllegalArgumentException | IllegalAccessException | IOException ex) {
-                        continue;
-                    }
-                }
-            }
-            message.seek(0);
-            stream.writeInt(message.getMessageLength());
-            byte buff[] = new byte[message.getMessageLength()];
-            message.readFully(buff);
-            stream.write(buff);
-        }
-        catch(Exception ex)
-        {
-            Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }   
-    
     private static void copyMessageMQMD(MQMessage newMessage, MQMessage oldMessage){
         for(Field field : oldMessage.getClass().getFields()){
             if(Modifier.isPublic(field.getModifiers()) && !Modifier.isStatic(field.getModifiers())){
@@ -1503,149 +1594,6 @@ public class MQUtility {
         }
     }
 
-    private static void disposeOutputStreamObject(FileOutputStream fileOutPutStream,BufferedOutputStream bufferedOutputStream, GZIPOutputStream gzipOutStream , ObjectOutputStream  objectOutputStream ){
-        if(objectOutputStream != null){
-            try {
-                objectOutputStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        if(gzipOutStream != null){
-            try {
-                gzipOutStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        if(bufferedOutputStream != null){
-            try {
-                bufferedOutputStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        
-        if(fileOutPutStream != null){
-            try {
-                fileOutPutStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        
-    }
-
-    private static void disposeInputStreamObject(FileInputStream fileInPutStream, BufferedInputStream bufferedInputStream, GZIPInputStream gzipInStream, ObjectInputStream  objectInputStream ){
-        if(objectInputStream != null){
-            try {
-                objectInputStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        if(gzipInStream != null){
-            try {
-                gzipInStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        if(bufferedInputStream != null){
-            try {
-                bufferedInputStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }        
-        if(fileInPutStream != null){
-            try {
-                fileInPutStream.close();
-            } catch (IOException ex) {
-                Logger.getLogger(MQUtility.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        
-    }
-
-    private static void BackupAndRemoveMessageFromSelectedPosition(MQQueueManager queueManager, String queueName, String filePath,MQMessageIdModel id) throws Exception{
-        FileOutputStream fileOutPutStream = null;
-        BufferedOutputStream bufferedOutputStream = null;
-        ObjectOutputStream  objectOutputStream = null;
-        GZIPOutputStream gzipOutStream = null;            
-        MQQueue queue = null;
-        try{
-            queue = queueManager.accessQueue(queueName, CMQC.MQOO_INQUIRE | CMQC.MQOO_BROWSE | CMQC.MQOO_INPUT_SHARED | CMQC.MQOO_OUTPUT);
-            int queueDepth = queue.getCurrentDepth();            
-            if(queueDepth > 0){
-                fileOutPutStream = new FileOutputStream(filePath);
-                bufferedOutputStream = new BufferedOutputStream(fileOutPutStream);
-                gzipOutStream = new GZIPOutputStream(bufferedOutputStream);
-                objectOutputStream = new ObjectOutputStream(gzipOutStream);
-
-                objectOutputStream.writeObject("MQAdminToolQueueDataFile");
-                objectOutputStream.writeInt(0x10001);
-                objectOutputStream.writeObject(queueName);
-                objectOutputStream.writeInt(queueDepth);
-                MQMessage message = new MQMessage();
-                MQGetMessageOptions options = new MQGetMessageOptions();
-                options.options = CMQC.MQGMO_BROWSE_NEXT;
-                getSelectedMessage(queue, message, options, id, null);
-                ArrayList<MQMessageIdModel> idsToRemove = new ArrayList<MQMessageIdModel>();
-                while(true){
-                    try{
-                        resetMessage(message);
-                        options.options = CMQC.MQGMO_BROWSE_NEXT ;
-                        options.matchOptions = CMQC.MQMO_NONE;
-                        queue.get(message, options);
-                        writeMessageToStream(message, objectOutputStream);
-                        MQMessageIdModel deleteMsgId = new MQMessageIdModel();
-                        deleteMsgId.MessageId = message.messageId;
-                        deleteMsgId.CorrelationdId = message.correlationId;
-                        deleteMsgId.MessageToken = options.msgToken.clone();
-                        idsToRemove.add(deleteMsgId);
-                    }
-                    catch(MQException ex){
-                        if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
-                            break;
-                        }
-                        else{
-                            throw ex;
-                        }
-                    }
-                }
-                
-                closeQueue(queue);
-                objectOutputStream.flush();
-                if(gzipOutStream != null){
-                    gzipOutStream.flush();
-                }
-                bufferedOutputStream.flush();
-                disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream,gzipOutStream, objectOutputStream);
-                ComsumeSelectedMessages(queueManager, queueName, idsToRemove, null, false, false);
-            }
-            else {
-                closeQueue(queue);
-                throw new Exception("Queue depth is 0");
-            }
-        }catch(IOException ex){
-            LogWriter.WriteToLog("MQUtility", "BackupAndRemoveMessageFromSelectedPosition",ex);
-            disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream, gzipOutStream, objectOutputStream);
-            removeFile(filePath);
-            closeQueue(queue);
-            throw new Exception("File access error");
-        }
-        catch(MQException ex){
-            LogWriter.WriteToLog("MQUtility", "BackupAndRemoveMessageFromSelectedPosition",ex);
-            disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream, gzipOutStream, objectOutputStream);
-            removeFile(filePath);
-            closeQueue(queue);
-            throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason()));                
-        }
-    
-        
-    }
-    
     private static void removeFile(String filePath){
         File file = new File(filePath);
         if(file.exists()){
@@ -1717,13 +1665,21 @@ public class MQUtility {
     private static boolean setQueueCursor(MQQueue queue, int position){
         MQMessage message = new MQMessage();
         MQGetMessageOptions options = new MQGetMessageOptions();
-        options.options = CMQC.MQGMO_BROWSE_NEXT;
+        options.options = CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
         options.matchOptions = CMQC.MQMO_NONE;
         try {
             int queueDepth = queue.getCurrentDepth();
             position = position > queueDepth ? queueDepth : position;
             for(int i = 0; i < position - 1; i++){
-                queue.get(message, options);  
+                // Only the cursor moves: no data is read
+                try{
+                    queue.get(message, options, 0);
+                }
+                catch(MQException ex){
+                    if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                        throw ex;
+                    }
+                }
                 resetMessage(message);
             }
         }
@@ -1746,55 +1702,18 @@ public class MQUtility {
 
     }
     
+    // One file per destination of the dead-letter messages (developer tool, see SortOutDLQ)
     private static void BackupMessageToFile(String fileName, ArrayList<MQMessage> messages, boolean isCompress, boolean removeDLH) throws Exception{
-            FileOutputStream fileOutPutStream = null;
-            BufferedOutputStream bufferedOutputStream = null;
-            ObjectOutputStream  objectOutputStream = null;
-            GZIPOutputStream gzipOutStream = null;            
-            try{
-                int queueDepth = messages.size();     
-                String dlq = removeDLH? "NoDLH":"DLH";
-                if(queueDepth > 0){
-                    fileOutPutStream = new FileOutputStream(fileName + "." + queueDepth + "." + dlq +".msg");
-                    bufferedOutputStream = new BufferedOutputStream(fileOutPutStream);
-                    if(isCompress == true){
-                        gzipOutStream = new GZIPOutputStream(bufferedOutputStream);
-                        objectOutputStream = new ObjectOutputStream(gzipOutStream);
-                    }
-                    else{
-                        objectOutputStream = new ObjectOutputStream(bufferedOutputStream);
-                    }
-                    objectOutputStream.writeObject("MQAdminToolQueueDataFile");
-                    objectOutputStream.writeInt(0x10001);
-                    objectOutputStream.writeObject(fileName);
-                    objectOutputStream.writeInt(queueDepth);
-                    int index = queueDepth;
-                    
-                    for(MQMessage message : messages){
-                        if(removeDLH){
-                            message = RemoveMQDLH(message);
-                        }
-                        writeMessageToStream(message, objectOutputStream);
-                        
-                    }
-                    objectOutputStream.flush();
-                    if(gzipOutStream != null){
-                        gzipOutStream.flush();
-                    }
-                    bufferedOutputStream.flush();
-                    disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream,gzipOutStream, objectOutputStream);
-                }
-                else {
-                    throw new Exception("Queue depth is 0");
-                }
+        if(messages.isEmpty()){
+            throw new Exception("Queue depth is 0");
+        }
+        String path = fileName + "." + messages.size() + "." + (removeDLH ? "NoDLH" : "DLH") + ".msg";
+        try(MessageFile.Writer writer = new MessageFile.Writer(path, isCompress, fileName, null)){
+            for(MQMessage message : messages){
+                writer.Write(removeDLH ? RemoveMQDLH(message) : message);
             }
-            catch(MQException ex){
-                LogWriter.WriteToLog("MQUtility", "BackupMessageToFile",ex);
-                disposeOutputStreamObject(fileOutPutStream, bufferedOutputStream, gzipOutStream, objectOutputStream);
-                throw new Exception(getMQReturnMessage(ex.getCompCode(), ex.getReason()));                
-            }
-    
-        
+            writer.Finish();
+        }
     }
     
     //try to get the current system encoding
