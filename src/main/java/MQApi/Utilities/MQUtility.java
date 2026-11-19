@@ -308,16 +308,13 @@ public class MQUtility {
             MQGetMessageOptions options = new MQGetMessageOptions();
             options.options = CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
             options.matchOptions = MQConstants.MQMO_MATCH_MSG_ID  | MQConstants.MQMO_MATCH_CORREL_ID;
-            if(fromId != null){
-                try{
-                    // Only the browse cursor is needed: no data
-                    getSelectedMessage(queue, message, options, fromId, 0);
-                }
-                catch(MQException ex){
-                    if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED && !setQueueCursor(queue, fromPosition)){
-                        closeQueue(queue);
-                        return result;
-                    }                                        
+            boolean positioned = fromId != null && moveCursorTo(queue, message, options, fromId);
+            if(!positioned && fromPosition > 1){
+                // A page not seen yet (e.g. a page typed in the browser), or its first message is gone
+                MQMessageIdModel before = messageBefore(queueManager, queueName, fromPosition);
+                if(before == null || !moveCursorTo(queue, message, options, before)){
+                    closeQueue(queue);
+                    return result;
                 }
             }
             while(index > 0){ 
@@ -1659,6 +1656,50 @@ public class MQUtility {
         }
         else{
             queue.get(message, options);
+        }
+    }
+
+    // Puts the browse cursor on the message, without reading its data; false when it is no longer on the queue
+    private static boolean moveCursorTo(MQQueue queue, MQMessage message, MQGetMessageOptions options, MQMessageIdModel id){
+        try{
+            getSelectedMessage(queue, message, options, id, 0);
+        }
+        catch(MQException ex){
+            return ex.getReason() == MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED;
+        }
+        return true;
+    }
+
+    /**
+     * The message before the position (1 is the first message), null when the queue has fewer messages.
+     * The messages are skipped on a handle of their own: skipped with an empty buffer on the read ahead
+     * handle of the list, the next messages would reach it without their data too.
+     */
+    private static MQMessageIdModel messageBefore(MQQueueManager queueManager, String queueName, int position) throws MQException{
+        MQQueue queue = openToBrowse(queueManager, queueName);
+        try{
+            MQMessage message = new MQMessage();
+            MQGetMessageOptions options = new MQGetMessageOptions();
+            options.options = CMQC.MQGMO_BROWSE_NEXT | CMQC.MQGMO_ACCEPT_TRUNCATED_MSG;
+            options.matchOptions = CMQC.MQMO_NONE;
+            for(int i = 1; i < position; i++){
+                resetMessage(message);
+                try{
+                    queue.get(message, options, 0);
+                }
+                catch(MQException ex){
+                    if(ex.getReason() == MQConstants.MQRC_NO_MSG_AVAILABLE){
+                        return null;
+                    }
+                    if(ex.getReason() != MQConstants.MQRC_TRUNCATED_MSG_ACCEPTED){
+                        throw ex;
+                    }
+                }
+            }
+            return idOf(message, options);
+        }
+        finally{
+            closeQueue(queue);
         }
     }
 

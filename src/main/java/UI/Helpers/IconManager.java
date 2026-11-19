@@ -85,6 +85,12 @@ public class IconManager {
     public ImageIcon RightIcon(){
         return icon("chevron-right", FOREGROUND);
     }
+    public ImageIcon FirstIcon(){
+        return icon("chevrons-left", FOREGROUND);
+    }
+    public ImageIcon LastIcon(){
+        return icon("chevrons-right", FOREGROUND);
+    }
 
     public ImageIcon AddNewIcon(){
         return icon("plus", FOREGROUND);

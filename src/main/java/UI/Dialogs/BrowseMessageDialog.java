@@ -49,6 +49,9 @@ public class BrowseMessageDialog extends DialogBase {
     private int totalPage;
     private int currentPage = 1;
     private HashMap<Integer, MQMessageIdModel> pageInfoMap = new HashMap<Integer, MQMessageIdModel>();
+    private final javax.swing.JTextField pageField = new javax.swing.JTextField(4);
+    private final javax.swing.JButton firstButton = new javax.swing.JButton();
+    private final javax.swing.JButton lastButton = new javax.swing.JButton();
 
     public BrowseMessageDialog(java.awt.Frame parent, boolean modal, MQQueueManager queueManager, TableListObject selectedObject) {
         super(parent, modal,  queueManager,selectedObject );
@@ -74,6 +77,60 @@ public class BrowseMessageDialog extends DialogBase {
         this.Refreshbutton.setEnabled(false);
         MessageListTable.setAutoCreateRowSorter(true);
         TableHelper.ToggleContentTable(MessageListTable, true);
+        initPaging();
+    }
+
+    // First and last page buttons, and the page number that can be typed (Enter goes to it); the tool bar
+    // is laid out from right to left: last, next, "/ total", page, previous, first
+    private void initPaging(){
+        firstButton.setIcon(iconManager.FirstIcon());
+        firstButton.setToolTipText("First page");
+        firstButton.setFocusable(false);
+        firstButton.addActionListener(e -> goToPage(1));
+        lastButton.setIcon(iconManager.LastIcon());
+        lastButton.setToolTipText("Last page");
+        lastButton.setFocusable(false);
+        lastButton.addActionListener(e -> goToPage(totalPage));
+        PreviousButton.setToolTipText("Previous page");
+        NextButton.setToolTipText("Next page");
+        pageField.setComponentOrientation(ComponentOrientation.LEFT_TO_RIGHT);
+        pageField.setHorizontalAlignment(javax.swing.JTextField.CENTER);
+        pageField.setToolTipText("Type a page number and press Enter to go to it");
+        // The tool bar of the form is 25 px high: a compact field fits in it
+        pageField.putClientProperty(com.formdev.flatlaf.FlatClientProperties.STYLE, "margin: 0,4,0,4; minimumHeight: 22");
+        pageField.setMaximumSize(new java.awt.Dimension(56, 24));
+        pageField.setPreferredSize(new java.awt.Dimension(56, 24));
+        pageField.addActionListener(e -> {
+            try{
+                int page = Integer.parseInt(pageField.getText().trim());
+                if(page >= 1 && page <= totalPage){
+                    goToPage(page);
+                    return;
+                }
+            }
+            catch(NumberFormatException ex){
+                // Not a number: the current page is shown again
+            }
+            java.awt.Toolkit.getDefaultToolkit().beep();
+            pageField.setText(Integer.toString(currentPage));
+            pageField.selectAll();
+        });
+        PageInfoLabel.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 4));
+        PagingToolBar.add(lastButton, 0);
+        PagingToolBar.add(javax.swing.Box.createHorizontalStrut(4), 3);
+        PagingToolBar.add(pageField, 4);
+        PagingToolBar.add(javax.swing.Box.createHorizontalStrut(4), 5);
+        PagingToolBar.add(firstButton);
+    }
+
+    private void goToPage(int page){
+        if(page == currentPage){
+            pageField.setText(Integer.toString(currentPage));
+            return;
+        }
+        currentPage = page;
+        fromPosition = (currentPage - 1) * maxMessagePerPage + 1;
+        updateTable();
     }
 
     private JPopupMenu getMessagelListTablePopupMenu(){
@@ -399,6 +456,9 @@ public class BrowseMessageDialog extends DialogBase {
         this.PagingToolBar.setEnabled(false);
         this.NextButton.setEnabled(false);
         this.PreviousButton.setEnabled(false);
+        this.firstButton.setEnabled(false);
+        this.lastButton.setEnabled(false);
+        this.pageField.setEnabled(false);
         this.Refreshbutton.setEnabled(false);
         this.TablePannel.setVisible(false);
         this.MessageListTable.setEnabled(false);
@@ -413,21 +473,15 @@ public class BrowseMessageDialog extends DialogBase {
         this.MessageListTable.setEnabled(true);
         this.UpdateTimeLabel.setText("Last updated: " + timeStamp + "");
         this.Refreshbutton.setEnabled(true);     
-        this.PageInfoLabel.setText(this.currentPage + "/" + this.totalPage);
+        this.PageInfoLabel.setText("/ " + Math.max(this.totalPage, 1));
+        this.pageField.setText(Integer.toString(Math.max(this.currentPage, 1)));
         ProgressBar.setIndeterminate(false);
-        if(totalPage > 1){            
-            if(this.currentPage > 1){
-                this.PreviousButton.setEnabled(true);
-            }
-            else{
-                this.PreviousButton.setEnabled(false);
-            }
-            if(currentPage == totalPage){
-                this.NextButton.setEnabled(false);
-            }
-            else{
-                this.NextButton.setEnabled(true);
-            }
+        if(totalPage > 1){
+            this.PreviousButton.setEnabled(currentPage > 1);
+            this.firstButton.setEnabled(currentPage > 1);
+            this.NextButton.setEnabled(currentPage < totalPage);
+            this.lastButton.setEnabled(currentPage < totalPage);
+            this.pageField.setEnabled(true);
             this.PagingToolBar.setEnabled(true);
             TableListObject obj  = TableHelper.GetLastTableRowObject(MessageListTable);
             next = obj.MessageIdInfo;
