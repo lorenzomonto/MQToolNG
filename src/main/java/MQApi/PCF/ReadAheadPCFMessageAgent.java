@@ -100,9 +100,13 @@ public class ReadAheadPCFMessageAgent extends PCFMessageAgent {
             }
             int waiting = commands.length;
             while (waiting > 0) {
+                // Options, encoding and character set of PCFMessageAgent.send: with read ahead a get that
+                // changes them on the same reply queue fails with MQRC_OPTIONS_CHANGED
                 MQMessage reply = new MQMessage();
+                reply.encoding = encoding;
+                reply.characterSet = defaultCharacterSet;
                 MQGetMessageOptions get = new MQGetMessageOptions();
-                get.options = CMQC.MQGMO_WAIT | CMQC.MQGMO_CONVERT | CMQC.MQGMO_NO_SYNCPOINT | CMQC.MQGMO_FAIL_IF_QUIESCING;
+                get.options = gmo.options;
                 get.matchOptions = CMQC.MQMO_NONE;
                 get.waitInterval = gmo.waitInterval;
                 replyQueue.get(reply, get);
