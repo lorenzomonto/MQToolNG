@@ -1225,7 +1225,7 @@ public class ChannelProperitiesDialog extends ObjectPropertiesDialogBase {
         SetupDetailPanel.add(ExitPanel, "card2");
 
         jLabel9.setFont(new java.awt.Font("Tahoma", 1, 14)); // NOI18N
-        jLabel9.setText("Storage");
+        jLabel9.setText("Retry");
         jLabel9.setPreferredSize(new java.awt.Dimension(150, 25));
 
         jScrollPane7.setBorder(null);
@@ -1690,7 +1690,7 @@ public class ChannelProperitiesDialog extends ObjectPropertiesDialogBase {
     
     //private methods    
     private void initCustomProperties(){
-        
+        layoutExtendedPanel();
         if(isCreate){
             this.setTitle("Add " + channelType.toString() + " channel"  );
             this.FinishButton.setText("Create");
@@ -1804,6 +1804,58 @@ public class ChannelProperitiesDialog extends ObjectPropertiesDialogBase {
         
     }
     
+    /**
+     * The Extended page laid out in rows, each label next to its field. The generated layout put the labels
+     * and the fields in two separate columns whose gaps differ, so the labels drifted away from their fields.
+     * A field hidden for the channel type hides its label too, and the row takes no space.
+     */
+    private void layoutExtendedPanel(){
+        javax.swing.JComponent[][] rows = {
+            {HeartbeatIntervalLabel, HeartbearIntercalSpinner},
+            {MaxMessageLengthLabel, MaxMessageLengthSpinner},
+            {SequenceNumberWrapLabel, SequenceNumberWraplSpinner},
+            {KeepAliveIntervalLabel, KeepAliveIntervalSpinner},
+            {DisconnectIntervalLabel, DisconnectIntervalSpinner},
+            {PropertyControlLabel, PriorityControlComboBox},
+            {BatchDataLimitLabel, BatchDataLimitSpinner},
+            {DataConversionLabel, DataConversionComboBox},
+            {NonPersistentMessageSpeedLabel, NonPersistentMessageSpeedComboBox},
+            {BatchSizeLabel, BatchSizeSpinner},
+            {BatchIntervalLabel, BatchIntervaSpinner},
+            {UseDeadLetterQueueLabel, UseDeadLetterQueueComboBox},
+            {PutAuthorityLabel, PutAuthorityComboBox},
+            {BatchheartBeatIntervalLabel, BatchheartBeatIntervallSpinner},
+            {SharingConversationLabel, SharingConversationSpinner},
+        };
+        jPanel1.removeAll();
+        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(jPanel1);
+        jPanel1.setLayout(layout);
+        // Automatic gaps, unlike fixed ones, are left out around the hidden rows
+        layout.setAutoCreateGaps(true);
+        javax.swing.GroupLayout.ParallelGroup labels = layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING);
+        javax.swing.GroupLayout.ParallelGroup fields = layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING);
+        javax.swing.GroupLayout.SequentialGroup vertical = layout.createSequentialGroup().addContainerGap();
+        for(int i = 0; i < rows.length; i++){
+            javax.swing.JComponent label = rows[i][0];
+            javax.swing.JComponent field = rows[i][1];
+            // As wide as its text: the generated 200 px cut the longest labels short
+            label.setPreferredSize(null);
+            labels.addComponent(label);
+            // Narrow preferred width: the fields fill the page without a horizontal scroll bar
+            fields.addComponent(field, 0, 150, Short.MAX_VALUE);
+            vertical.addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER)
+                    .addComponent(label)
+                    .addComponent(field, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE));
+        }
+        layout.setHorizontalGroup(layout.createSequentialGroup()
+                .addGap(6)
+                .addGroup(labels)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(fields)
+                .addGap(24));
+        layout.setVerticalGroup(vertical.addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE));
+    }
+
     private void addCategoryPanelToList(){
         categoryPanels.put("General",this.GeneralPanel);
         categoryPanels.put("Extended",this.ExtendedPanel);
