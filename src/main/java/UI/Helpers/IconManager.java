@@ -217,6 +217,10 @@ public class IconManager {
         return icon("copy", FOREGROUND);
     }
 
+    public ImageIcon EventsIcon(){
+        return icon("scroll-text", FOREGROUND);
+    }
+
     /** A Lucide icon of Resources/Icons drawn in the given color (16 px). */
     public static Icon Named(String name, Color color){
         return selectedCache.computeIfAbsent(name + "@" + Integer.toHexString(color.getRGB()), k -> {

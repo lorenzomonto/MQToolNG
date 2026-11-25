@@ -32,6 +32,8 @@ Modified in November 2026:
   with the commands that align the second one, and authority records (setmqaut) shown and changed.
 - Message browser: JSON shown indented; message properties shown and changed.
 - Automatic refresh of the lists and of the queue manager page, and a depth chart of a queue.
+- Events of a queue manager shown as a log (authority failures, channels, full queues, configuration
+  changes with the attributes changed, commands), and the event settings of the queue manager.
 - Fixes: UI updates moved to the Swing event thread, background connection to the queue manager,
   leaked connections and handles closed, debug output that printed connection passwords removed.
 
@@ -95,6 +97,16 @@ QMGR STATUS, LISTENER STATUS, CHANNEL STATUS, the queue list and CHLAUTH (`MQApi
 - The definitions are read with MQSC DISPLAY commands sent to the command server (PCF Escape,
   `MQApi/Config`), also for queue managers administered through another one; not on z/OS. Passwords
   are not exported; dates, depths and other state are left out.
+
+## Events
+
+- Right click on a connected queue manager: **Events…**, or **Show events** in *Needs attention* on its page.
+- The event messages are browsed, not removed, from SYSTEM.ADMIN.QMGR, CHANNEL, PERFM, CONFIG, COMMAND and
+  LOGGER.EVENT (`MQApi/Events/QueueManagerEvents`): the newest 10,000 of each queue. A configuration change
+  (two messages, the object before and after) is shown as one event with the attributes changed.
+- **Event settings** turns each kind of event on or off (AUTHOREV, CHLEV, CONFIGEV, CMDEV… of ALTER QMGR).
+- Not available for a queue manager administered through another one: MQ reads only the queues of the
+  queue manager it is connected to. The error log files (AMQERR01.LOG) cannot be read through MQ.
 
 ## Security
 

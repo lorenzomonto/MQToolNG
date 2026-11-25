@@ -166,7 +166,7 @@ public class QueueManagerHealth {
     private static void checkEvents(QueueManagerOverview o, List<HealthCheck> checks) {
         for (QueueDepth events : o.EventQueues) {
             checks.add(new HealthCheck(Severity.NOTE, events.Current == 1 ? "1 event to read" : MQFormat.Number(events.Current) + " events to read",
-                    events.Name, ActionKind.BROWSE_QUEUE, events.Name));
+                    events.Name, ActionKind.SHOW_EVENTS, events.Name));
         }
     }
 

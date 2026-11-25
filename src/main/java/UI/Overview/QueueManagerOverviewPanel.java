@@ -51,6 +51,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
         void Connect();
         void ShowQueue(String queueName);
         void BrowseQueue(String queueName);
+        /** The events of the queue manager, read from its event queues: those of the queue first. */
+        void ShowEvents(String eventQueue);
         /** False for a queue manager administered through another one: its messages cannot be read. */
         boolean CanBrowseMessages();
     }
@@ -343,6 +345,8 @@ public class QueueManagerOverviewPanel extends JPanel implements Scrollable {
                 return Widgets.Link("Show queue", () -> actions.ShowQueue(check.Target));
             case BROWSE_QUEUE:
                 return actions.CanBrowseMessages() ? Widgets.Link("Browse messages", () -> actions.BrowseQueue(check.Target)) : null;
+            case SHOW_EVENTS:
+                return actions.CanBrowseMessages() ? Widgets.Link("Show events", () -> actions.ShowEvents(check.Target)) : null;
             default:
                 return null;
         }

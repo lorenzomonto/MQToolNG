@@ -915,6 +915,14 @@ public class MainWindow extends javax.swing.JFrame {
             JMenuItem exportConfigMenuItem = new JMenuItem("Export configuration (MQSC)…", iconManager.ExportConfigIcon());
             JMenuItem compareMenuItem = new JMenuItem("Compare with another queue manager…", iconManager.CompareIcon());
             JMenuItem authorityMenuItem = new JMenuItem("Authority records…", iconManager.AuthorityIcon());
+            JMenuItem eventsMenuItem = new JMenuItem("Events…", iconManager.EventsIcon());
+            eventsMenuItem.addActionListener(e -> showQueueManagerEvents());
+            TreeNodeObject selectedNode = selectedQueueManagerNode();
+            if(selectedNode != null && selectedNode.ConnectionDetail != null && selectedNode.ConnectionDetail.IsRemote()){
+                // The event queues are local queues of the remote queue manager
+                eventsMenuItem.setEnabled(false);
+                eventsMenuItem.setToolTipText(REMOTE_MESSAGES_TIP);
+            }
             exportConfigMenuItem.addActionListener(e -> showConfigExport());
             compareMenuItem.addActionListener(e -> showConfigCompare());
             authorityMenuItem.addActionListener(e -> showQueueManagerAuthorities());
@@ -925,6 +933,7 @@ public class MainWindow extends javax.swing.JFrame {
             popup.add(exportConfigMenuItem);
             popup.add(compareMenuItem);
             popup.add(authorityMenuItem);
+            popup.add(eventsMenuItem);
             popup.add(new JPopupMenu.Separator());
             popup.add(disconnectMenuItem);
         }        
@@ -1578,6 +1587,19 @@ public class MainWindow extends javax.swing.JFrame {
         }
 
         @Override
+        public void ShowEvents(String eventQueue) {
+            if(overviewNode == null){
+                return;
+            }
+            TreeNodeObject nodeObject = (TreeNodeObject) overviewNode.getUserObject();
+            if(nodeObject.IsConnected() && !MQConnection.IsRemote(nodeObject.QueueManager)){
+                UI.Events.QueueManagerEventsDialog dialog = new UI.Events.QueueManagerEventsDialog(MainWindow.this, nodeObject.QueueManager, nodeObject.Name);
+                dialog.ShowQueue(eventQueue);
+                dialog.setVisible(true);
+            }
+        }
+
+        @Override
         public void BrowseQueue(String queueName) {
             if(overviewNode == null){
                 return;
@@ -2215,6 +2237,13 @@ public class MainWindow extends javax.swing.JFrame {
         TreeNodeObject node = selectedQueueManagerNode();
         if(node != null && node.IsConnected()){
             new UI.Config.AuthorityDialog(this, node.QueueManager, node.Name, null, null).setVisible(true);
+        }
+    }
+
+    private void showQueueManagerEvents(){
+        TreeNodeObject node = selectedQueueManagerNode();
+        if(node != null && node.IsConnected()){
+            new UI.Events.QueueManagerEventsDialog(this, node.QueueManager, node.Name).setVisible(true);
         }
     }
 

@@ -14,7 +14,9 @@ public class HealthCheck {
         /** Open the queue list filtered on Target. */
         SHOW_QUEUE,
         /** Browse the messages of the queue Target. */
-        BROWSE_QUEUE
+        BROWSE_QUEUE,
+        /** Open the events of the queue manager. */
+        SHOW_EVENTS
     }
 
     public final Severity Level;
